@@ -6,7 +6,9 @@ A comprehensive tool for generating instruction datasets from PDF and TXT docume
 
 - **Multi-Format Document Support**: Extract text from PDF documents and TXT files
 - **Intelligent Text Chunking**: Split text into optimal chunks with configurable overlap
-- **LLM-Powered QA Generation**: Generate high-quality question-answer pairs using transformer models
+- **Two-Step LLM-Powered QA Generation**: Generate high-quality question-answer pairs using a two-step process:
+  1. **Question Generation**: Generate context-aware questions using English prompts with Arabic output
+  2. **Answer Generation**: Generate comprehensive answers based on the question and context
 - **Embedding Generation**: Create vector embeddings for semantic search and similarity matching
 - **Multiple Export Formats**: Export data in JSON, CSV, and Alpaca instruction formats
 - **Memory Management**: Automatic model offloading to save memory during processing
@@ -260,10 +262,21 @@ The tool saves files incrementally during processing to prevent data loss:
 
 ### LLM Models for QA Generation
 
+The tool uses a two-step process for QA generation:
+
+1. **Question Generation**: Uses English prompts to generate context-aware questions in Arabic
+2. **Answer Generation**: Uses the generated question and context to create comprehensive answers in Arabic
+
+**Supported Models:**
 - `Qwen/Qwen2.5-32B-Instruct` (default)
 - `Qwen/Qwen2.5-7B-Instruct`
 - `Qwen/Qwen3-8B`
 - Any Hugging Face compatible model
+
+**QA Generation Process:**
+- **Step 1**: The LLM analyzes the text context and generates relevant questions in Arabic
+- **Step 2**: The LLM uses the generated question and original context to create detailed answers in Arabic
+- **Quality Control**: Both questions and answers are cleaned and validated for quality
 
 ### Embedding Models
 
@@ -276,9 +289,11 @@ The tool saves files incrementally during processing to prevent data loss:
 
 The tool includes full support for Arabic text processing and question generation:
 
-- **Context-Aware Question Generation**: LLM generates intelligent questions based on the actual content of the text
+- **Two-Step QA Generation**: 
+  - **Question Generation**: Uses English prompts for better LLM understanding but generates questions in Arabic
+  - **Answer Generation**: Generates comprehensive answers in Arabic based on the question and context
+- **Context-Aware Questions**: LLM generates intelligent questions based on the actual content of the text
 - **Arabic-Only Output**: All questions and answers are generated in Arabic only
-- **Arabic Prompts**: LLM prompts are in Arabic to ensure Arabic-only output
 - **Arabic Punctuation**: Proper handling of Arabic punctuation marks
 - **Sentence Splitting**: Intelligent sentence boundary detection for Arabic
 - **Text Chunking**: Optimal chunking that respects Arabic text structure

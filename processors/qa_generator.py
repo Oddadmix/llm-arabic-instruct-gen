@@ -17,7 +17,6 @@ class QAGenerator:
     """Generates question-answer pairs using LLM models."""
     
     def __init__(self, num_questions_per_chunk: int = 3, 
-                 question_types: Optional[List[str]] = None,
                  llm_model: str = "Qwen/Qwen2.5-32B-Instruct",
                  max_length: int = 512,
                  temperature: float = 0.7,
@@ -193,15 +192,18 @@ class QAGenerator:
             logger.debug(f"Generating question {q_idx + 1}/{self.num_questions_per_chunk}")
             
             if self.model is not None and self.model_loaded:
-                # Use LLM for context-aware question generation
-                logger.debug("Using LLM for context-aware question generation...")
-                question = self._generate_context_aware_question(chunk, q_idx)
-                answer = self._generate_answer_with_llm(chunk, "", question)
+                # Step 1: Generate question based on context
+                logger.debug("Step 1: Generating question based on context...")
+                question = self._generate_question_from_context(chunk, q_idx)
+                
+                # Step 2: Generate answer based on question and context
+                logger.debug("Step 2: Generating answer based on question and context...")
+                answer = self._generate_answer_from_question_context(chunk, question)
             else:
                 # Fallback to simple question generation
                 logger.debug("Using fallback question generation...")
                 question = self._generate_fallback_question(chunk, q_idx)
-                answer = self._generate_answer(chunk, "", question)
+                answer = self._generate_fallback_answer(chunk, question)
             
             qa_pair = {
                 "id": f"chunk_{chunk_index}_question_{q_idx}",
@@ -218,17 +220,17 @@ class QAGenerator:
         logger.debug(f"Generated {len(qa_pairs)} QA pairs for chunk {chunk_index}")
         return qa_pairs
     
-    def _generate_context_aware_question(self, context: str, question_index: int) -> str:
-        """Generate a context-aware question using the LLM model."""
+    def _generate_question_from_context(self, context: str, question_index: int) -> str:
+        """Generate a question based on the context using English prompt but Arabic output."""
         try:
-            logger.debug(f"Generating context-aware question {question_index + 1}")
+            logger.debug(f"Generating question from context {question_index + 1}")
             
-            # Create prompt for context-aware question generation in Arabic
-            prompt = f"""بناءً على النص التالي، اطرح سؤالاً ذكي ومفيد يمكن الإجابة عليه من النص:
+            # Create English prompt for question generation, but request Arabic output
+            prompt = f"""Based on the following Arabic text, generate a relevant and intelligent question in Arabic that can be answered from the text. The question should be natural and contextually appropriate.
 
-النص: {context[:800]}...
+Text: {context}
 
-السؤال:"""
+Question (in Arabic):"""
             
             # Tokenize input
             inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
@@ -255,86 +257,27 @@ class QAGenerator:
             # Clean up the question
             question = self._clean_question(question)
             
-            logger.debug(f"LLM generated context-aware question: {question[:100]}...")
+            logger.debug(f"LLM generated question from context: {question[:100]}...")
             
             return question if question else self._generate_fallback_question(context, question_index)
             
         except Exception as e:
-            logger.error(f"Error generating context-aware question with LLM: {e}")
+            logger.error(f"Error generating question from context with LLM: {e}")
             return self._generate_fallback_question(context, question_index)
     
-    def _generate_fallback_question(self, context: str, question_index: int) -> str:
-        """Generate a simple fallback question when LLM is not available."""
-        # Simple fallback: ask about the main topic or concept
-        sentences = context.split('.')
-        if sentences:
-            # Take the first meaningful sentence and create a question
-            first_sentence = sentences[0].strip()
-            if len(first_sentence) > 20:
-                return f"ما هو المحتوى الرئيسي في هذا النص؟"
-            else:
-                return f"ما هي الفكرة الأساسية المطروحة هنا؟"
-        else:
-            return f"ما هو موضوع هذا النص؟"
-    
-    def _generate_question_with_llm(self, context: str, topic: str, question_type: str) -> str:
-        """Generate a question using the LLM model."""
-        try:
-            logger.debug(f"Generating {question_type} question for topic '{topic}' using LLM")
-            
-            # Create prompt for question generation in Arabic
-            prompt = f"""بناءً على النص التالي، اطرح سؤالاً من نوع "{question_type}" حول "{topic}":
-
-النص: {context[:500]}...
-
-السؤال:"""
-            
-            # Tokenize input
-            inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
-            inputs = inputs.to(self.device)
-            logger.debug(f"Tokenized input: {inputs.shape[1]} tokens")
-            
-            # Generate response
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs,
-                    max_length=inputs.shape[1] + 50,
-                    temperature=self.temperature,
-                    top_p=self.top_p,
-                    do_sample=self.do_sample,
-                    pad_token_id=self.tokenizer.eos_token_id
-                )
-            
-            # Decode response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extract the generated question
-            question = response[len(prompt):].strip()
-            
-            # Clean up the question
-            question = self._clean_question(question)
-            
-            logger.debug(f"LLM generated question: {question[:100]}...")
-            
-            return question if question else self._generate_question(topic, question_type)
-            
-        except Exception as e:
-            logger.error(f"Error generating question with LLM: {e}")
-            return self._generate_question(topic, question_type)
-    
-    def _generate_answer_with_llm(self, context: str, topic: str, question: str) -> str:
-        """Generate an answer using the LLM model."""
+    def _generate_answer_from_question_context(self, context: str, question: str) -> str:
+        """Generate an answer based on the question and context."""
         try:
             logger.debug(f"Generating answer for question: {question[:50]}...")
             
-            # Create prompt for answer generation in Arabic
-            prompt = f"""بناءً على النص التالي، أجب على هذا السؤال:
+            # Create English prompt for answer generation, but request Arabic output
+            prompt = f"""Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured.
 
-النص: {context[:800]}...
+Text: {context[:800]}...
 
-السؤال: {question}
+Question: {question}
 
-الإجابة:"""
+Answer (in Arabic):"""
             
             # Tokenize input
             inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
@@ -361,13 +304,48 @@ class QAGenerator:
             # Clean up the answer
             answer = self._clean_answer(answer)
             
-            logger.debug(f"LLM generated answer: {answer[:100]}...")
+            logger.debug(f"LLM generated answer from question-context: {answer[:100]}...")
             
-            return answer if answer else self._generate_answer(context, topic, question)
+            return answer if answer else self._generate_fallback_answer(context, question)
             
         except Exception as e:
-            logger.error(f"Error generating answer with LLM: {e}")
-            return self._generate_answer(context, topic, question)
+            logger.error(f"Error generating answer from question-context with LLM: {e}")
+            return self._generate_fallback_answer(context, question)
+    
+    def _generate_fallback_question(self, context: str, question_index: int) -> str:
+        """Generate a simple fallback question when LLM is not available."""
+        # Simple fallback: ask about the main topic or concept
+        sentences = context.split('.')
+        if sentences:
+            # Take the first meaningful sentence and create a question
+            first_sentence = sentences[0].strip()
+            if len(first_sentence) > 20:
+                return f"ما هو المحتوى الرئيسي في هذا النص؟"
+            else:
+                return f"ما هي الفكرة الأساسية المطروحة هنا؟"
+        else:
+            return f"ما هو موضوع هذا النص؟"
+    
+    def _generate_fallback_answer(self, context: str, question: str) -> str:
+        """Generate a simple fallback answer when LLM is not available."""
+        # Simple answer generation - can be improved with LLM integration
+        sentences = context.split('.')
+        
+        # Find sentences that might be relevant to the question
+        relevant_sentences = []
+        for sentence in sentences:
+            if len(sentence.strip()) > 20:  # Only meaningful sentences
+                relevant_sentences.append(sentence.strip())
+        
+        if relevant_sentences:
+            # Use the first relevant sentence as answer
+            answer = relevant_sentences[0]
+            if len(answer) > 200:  # Truncate if too long
+                answer = answer[:200] + "..."
+            return answer
+        else:
+            # Fallback: use a portion of the context
+            return context[:200] + "..." if len(context) > 200 else context
     
     def _clean_question(self, question: str) -> str:
         """Clean up generated question."""
@@ -400,37 +378,6 @@ class QAGenerator:
         
         return answer
     
-    def _extract_topics(self, text: str) -> List[str]:
-        """Extract potential topics from text for question generation."""
-        # This method is no longer needed as we generate context-aware questions
-        return []
-    
-    def _generate_question(self, topic: str, question_type: str) -> str:
-        """Generate a question based on topic and type (fallback method)."""
-        # This method is now empty as we'll generate context-aware questions
-        return ""
-    
-    def _generate_answer(self, context: str, topic: str, question: str) -> str:
-        """Generate an answer based on context and question (fallback method)."""
-        # Simple answer generation - can be improved with LLM integration
-        sentences = context.split('.')
-        
-        # Find sentences that mention the topic
-        relevant_sentences = []
-        for sentence in sentences:
-            if topic.lower() in sentence.lower():
-                relevant_sentences.append(sentence.strip())
-        
-        if relevant_sentences:
-            # Use the first relevant sentence as answer
-            answer = relevant_sentences[0]
-            if len(answer) > 200:  # Truncate if too long
-                answer = answer[:200] + "..."
-            return answer
-        else:
-            # Fallback: use a portion of the context
-            return context[:200] + "..." if len(context) > 200 else context
-    
     def generate_instruction_format(self, qa_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert QA pairs to instruction format for training."""
         logger.info("Converting QA pairs to instruction format...")
@@ -449,6 +396,6 @@ class QAGenerator:
         return instructions
     
     def __del__(self):
-        """Cleanup when object is destroyed."""
-        if hasattr(self, 'offload_model') and self.offload_model:
+        """Cleanup when the object is destroyed."""
+        if self.offload_model:
             self._unload_llm() 
