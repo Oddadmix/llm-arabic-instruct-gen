@@ -74,7 +74,7 @@ class QAGenerator:
             self.pipeline = pipeline(
                 "text-generation",
                 model=self.llm_model,
-                model_kwargs={"torch_dtype": torch.float16 if self.device.type == "cuda" else torch.float32},
+                model_kwargs={"torch_dtype": torch.float16 if self.device.type == "cuda" else torch.float16},
                 device=self.device
             )
             logger.info("Pipeline created successfully")
