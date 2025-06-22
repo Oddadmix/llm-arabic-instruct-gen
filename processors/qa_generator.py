@@ -18,7 +18,6 @@ class QAGenerator:
     
     def __init__(self, num_questions_per_chunk: int = 3, 
                  llm_model: str = "Qwen/Qwen2.5-32B-Instruct",
-                 model_type: str = "auto",
                  max_length: int = 512,
                  temperature: float = 0.7,
                  top_p: float = 0.9,
@@ -26,7 +25,6 @@ class QAGenerator:
                  offload_model: bool = True):
         self.num_questions_per_chunk = num_questions_per_chunk
         self.llm_model = llm_model
-        self.model_type = model_type
         self.max_length = max_length
         self.temperature = temperature
         self.top_p = top_p
@@ -35,7 +33,6 @@ class QAGenerator:
         
         logger.info(f"QAGenerator initialized with:")
         logger.info(f"  - LLM Model: {llm_model}")
-        logger.info(f"  - Model Type: {model_type}")
         logger.info(f"  - Questions per chunk: {num_questions_per_chunk}")
         logger.info(f"  - Temperature: {temperature}")
         logger.info(f"  - Top-p: {top_p}")
@@ -73,9 +70,9 @@ class QAGenerator:
             
         logger.info(f"Loading LLM model: {self.llm_model}")
         try:
-            logger.info("Creating text generation pipeline...")
+            logger.info("Creating conversation pipeline...")
             self.pipeline = pipeline(
-                "text-generation",
+                "conversational",
                 model=self.llm_model,
                 device=self.device,
                 torch_dtype=torch.float16 if self.device.type == "cuda" else torch.float32
@@ -208,72 +205,26 @@ class QAGenerator:
         try:
             logger.debug(f"Generating question from context {question_index + 1}")
             
-            # Check if this is an instruction-based model
-            if self._is_instruction_model():
-                # Use instruction format for instruction-based models
-                prompt = self._format_instruction_prompt(
-                    instruction="Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under various types like factual, inferential, analytical, comparative, causal, hypothetical, opinion-based, clarifying, predictive, evaluative, interpretive, reflective, quantitative, procedural, ethical, motivational, definition-based, contradiction-detecting, etc. The response should be only the question in Arabic — no explanations, translations, or additional commentary.",
-                    input_text=f"Text: {context}"
-                )
-            else:
-                # Use traditional prompt format for non-instruction models
-                prompt = f"""Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under any of the following types (but not limited to):
-
-Factual (retrieving specific details)
-
-Inferential (drawing logical conclusions)
-
-Analytical (exploring causes, effects, or structure)
-
-Comparative (comparing people, events, or ideas)
-
-Causal (asking about reasons or consequences)
-
-Hypothetical (posing 'what if' or imagined scenarios)
-
-Opinion-based (eliciting a personal or character viewpoint)
-
-Clarifying (asking for more explanation or elaboration)
-
-Predictive (asking what might happen next)
-
-Evaluative (judging quality, importance, or impact)
-
-Interpretive (exploring meaning or symbolism)
-
-Reflective (connecting the text to personal or broader experience)
-
-Quantitative (involving numbers, amounts, or measurements from the text)
-
-Procedural (asking about steps, methods, or processes)
-
-Ethical (raising moral or value-based questions)
-
-Motivational (asking about reasons behind actions or decisions)
-
-Definition-based (asking for the meaning of a term or concept in context)
-
-Contradiction-detecting (identifying inconsistencies or paradoxes)
-
-The response should be only the question in Arabic — no explanations, translations, or additional commentary.
-
-Text: {context}
-
-Question (in Arabic):"""
+            # Create instruction for question generation
+            instruction = "Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under various types like factual, inferential, analytical, comparative, causal, hypothetical, opinion-based, clarifying, predictive, evaluative, interpretive, reflective, quantitative, procedural, ethical, motivational, definition-based, contradiction-detecting, etc. The response should be only the question in Arabic — no explanations, translations, or additional commentary."
+            
+            # Create messages for the conversation
+            messages = [
+                {"role": "user", "content": f"{instruction}\n\nText: {context}"}
+            ]
             
             # Generate response using pipeline
             outputs = self.pipeline(
-                prompt,
+                messages,
                 max_new_tokens=100,
                 temperature=self.temperature,
                 top_p=self.top_p,
                 do_sample=self.do_sample,
-                pad_token_id=self.pipeline.tokenizer.eos_token_id,
-                return_full_text=False
+                pad_token_id=self.pipeline.tokenizer.eos_token_id
             )
             
             # Extract the generated question
-            question = outputs[0]['generated_text'].strip()
+            question = outputs[0]["generated_text"][-1]["content"].strip()
             
             # Clean up the question
             question = self._clean_question(question)
@@ -291,36 +242,26 @@ Question (in Arabic):"""
         try:
             logger.debug(f"Generating answer for question: {question[:50]}...")
             
-            # Check if this is an instruction-based model
-            if self._is_instruction_model():
-                # Use instruction format for instruction-based models
-                prompt = self._format_instruction_prompt(
-                    instruction="Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured.",
-                    input_text=f"Text: {context}\n\nQuestion: {question}"
-                )
-            else:
-                # Use traditional prompt format for non-instruction models
-                prompt = f"""Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured.
-
-Text: {context}
-
-Question: {question}
-
-Answer (in Arabic):"""
+            # Create instruction for answer generation
+            instruction = "Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured."
+            
+            # Create messages for the conversation
+            messages = [
+                {"role": "user", "content": f"{instruction}\n\nText: {context}\n\nQuestion: {question}"}
+            ]
             
             # Generate response using pipeline
             outputs = self.pipeline(
-                prompt,
+                messages,
                 max_new_tokens=200,
                 temperature=self.temperature,
                 top_p=self.top_p,
                 do_sample=self.do_sample,
-                pad_token_id=self.pipeline.tokenizer.eos_token_id,
-                return_full_text=False
+                pad_token_id=self.pipeline.tokenizer.eos_token_id
             )
             
             # Extract the generated answer
-            answer = outputs[0]['generated_text'].strip()
+            answer = outputs[0]["generated_text"][-1]["content"].strip()
             
             # Clean up the answer
             answer = self._clean_answer(answer)
@@ -333,50 +274,34 @@ Answer (in Arabic):"""
             logger.error(f"Error generating answer from question-context with LLM: {e}")
             return ""
     
-    def _format_instruction_prompt(self, instruction: str, input_text: str) -> str:
-        """Format prompt for instruction-based models like Qwen2.5-Instruct."""
-        # Different models use different instruction formats
-        if "qwen" in self.llm_model.lower():
-            # Qwen instruction format
-            return f"<|im_start|>system\nYou are a helpful AI assistant that generates questions and answers in Arabic based on provided text.<|im_end|>\n<|im_start|>user\n{instruction}\n\n{input_text}<|im_end|>\n<|im_start|>assistant\n"
-        elif "llama" in self.llm_model.lower() or "mistral" in self.llm_model.lower():
-            # Llama/Mistral instruction format
-            return f"[INST] {instruction}\n\n{input_text} [/INST]"
-        elif "gemma" in self.llm_model.lower():
-            # Gemma instruction format
-            return f"<start_of_turn>user\n{instruction}\n\n{input_text}<end_of_turn>\n<start_of_turn>model\n"
-        else:
-            # Generic instruction format
-            return f"### Instruction:\n{instruction}\n\n### Input:\n{input_text}\n\n### Response:\n"
-    
     def _clean_question(self, question: str) -> str:
-        """Clean up generated question."""
-        # Remove extra whitespace and newlines
-        question = re.sub(r'\s+', ' ', question.strip())
+        # """Clean up generated question."""
+        # # Remove extra whitespace and newlines
+        # question = re.sub(r'\s+', ' ', question.strip())
         
-        # Ensure it ends with a question mark
-        if not question.endswith('?'):
-            question += '?'
+        # # Ensure it ends with a question mark
+        # if not question.endswith('?'):
+        #     question += '?'
         
-        # Remove any incomplete sentences
-        if len(question.split()) < 3:
-            return ""
+        # # Remove any incomplete sentences
+        # if len(question.split()) < 3:
+        #     return ""
         
         return question
     
     def _clean_answer(self, answer: str) -> str:
         """Clean up generated answer."""
         # Remove extra whitespace and newlines
-        answer = re.sub(r'\s+', ' ', answer.strip())
+        # answer = re.sub(r'\s+', ' ', answer.strip())
         
-        # Remove any incomplete sentences at the end
-        sentences = answer.split('.')
-        if len(sentences) > 1 and len(sentences[-1].strip()) < 10:
-            answer = '.'.join(sentences[:-1]) + '.'
+        # # Remove any incomplete sentences at the end
+        # sentences = answer.split('.')
+        # if len(sentences) > 1 and len(sentences[-1].strip()) < 10:
+        #     answer = '.'.join(sentences[:-1]) + '.'
         
         # Truncate if too long
-        if len(answer) > 500:
-            answer = answer[:500] + "..."
+        # if len(answer) > 500:
+        #     answer = answer[:500] + "..."
         
         return answer
     
@@ -400,18 +325,4 @@ Answer (in Arabic):"""
     def __del__(self):
         """Cleanup when the object is destroyed."""
         if self.offload_model:
-            self._unload_llm()
-    
-    def _is_instruction_model(self) -> bool:
-        """Determine if the model is instruction-based."""
-        if self.model_type == "auto":
-            # Auto-detect based on model name
-            return "instruct" in self.llm_model.lower()
-        elif self.model_type == "instruction":
-            return True
-        elif self.model_type == "completion":
-            return False
-        else:
-            # Default to auto-detection for unknown types
-            logger.warning(f"Unknown model_type '{self.model_type}', using auto-detection")
-            return "instruct" in self.llm_model.lower() 
+            self._unload_llm() 
