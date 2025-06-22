@@ -70,12 +70,12 @@ class QAGenerator:
             
         logger.info(f"Loading LLM model: {self.llm_model}")
         try:
-            logger.info("Creating conversation pipeline...")
+            logger.info("Creating text generation pipeline...")
             self.pipeline = pipeline(
                 "text-generation",
                 model=self.llm_model,
-                device=self.device,
-                torch_dtype=torch.float16 if self.device.type == "cuda" else torch.float32
+                model_kwargs={"torch_dtype": torch.float16 if self.device.type == "cuda" else torch.float32},
+                device=self.device
             )
             logger.info("Pipeline created successfully")
             
@@ -219,8 +219,7 @@ class QAGenerator:
                 max_new_tokens=100,
                 temperature=self.temperature,
                 top_p=self.top_p,
-                do_sample=self.do_sample,
-                pad_token_id=self.pipeline.tokenizer.eos_token_id
+                do_sample=self.do_sample
             )
             
             # Extract the generated question
@@ -256,8 +255,7 @@ class QAGenerator:
                 max_new_tokens=200,
                 temperature=self.temperature,
                 top_p=self.top_p,
-                do_sample=self.do_sample,
-                pad_token_id=self.pipeline.tokenizer.eos_token_id
+                do_sample=self.do_sample
             )
             
             # Extract the generated answer
