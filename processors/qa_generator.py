@@ -278,7 +278,7 @@ Question (in Arabic):"""
             with torch.no_grad():
                 outputs = self.model.generate(
                     inputs,
-                    max_length=inputs.shape[1] + 100,
+                    max_length=2048,
                     temperature=self.temperature,
                     top_p=self.top_p,
                     do_sample=self.do_sample,
@@ -292,7 +292,7 @@ Question (in Arabic):"""
             question = response[len(prompt):].strip()
             
             # Clean up the question
-            question = self._clean_question(question)
+            # question = self._clean_question(question)
             
             logger.debug(f"LLM generated question from context: {question[:100]}...")
             
@@ -325,7 +325,7 @@ Answer (in Arabic):"""
             with torch.no_grad():
                 outputs = self.model.generate(
                     inputs,
-                    max_length=inputs.shape[1] + 200,
+                    max_length=2048,
                     temperature=self.temperature,
                     top_p=self.top_p,
                     do_sample=self.do_sample,
@@ -339,7 +339,7 @@ Answer (in Arabic):"""
             answer = response[len(prompt):].strip()
             
             # Clean up the answer
-            answer = self._clean_answer(answer)
+            # answer = self._clean_answer(answer)
             
             logger.debug(f"LLM generated answer from question-context: {answer[:100]}...")
             
