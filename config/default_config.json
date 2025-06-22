@@ -1,0 +1,32 @@
+{
+  "pdf_processor": {
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "max_pages": null
+  },
+  "qa_generator": {
+    "num_questions_per_chunk": 3,
+    "question_types": ["what", "how", "why"],
+    "max_answer_length": 200,
+    "llm_model": "Qwen/Qwen3-8B",
+    "max_length": 512,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "do_sample": true,
+    "offload_model": true
+  },
+  "embeddings": {
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "batch_size": 32,
+    "device": "auto",
+    "offload_model": true
+  },
+  "export": {
+    "format": "json",
+    "output_dir": "output"
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  }
+} 
