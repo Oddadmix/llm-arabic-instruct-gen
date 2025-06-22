@@ -226,7 +226,45 @@ class QAGenerator:
             logger.debug(f"Generating question from context {question_index + 1}")
             
             # Create English prompt for question generation, but request Arabic output
-            prompt = f"""Based on the following Arabic text, generate a relevant and intelligent question in Arabic that can be answered from the text. The question should be natural and contextually appropriate.
+            prompt = f"""Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under any of the following types (but not limited to):
+
+Factual (retrieving specific details)
+
+Inferential (drawing logical conclusions)
+
+Analytical (exploring causes, effects, or structure)
+
+Comparative (comparing people, events, or ideas)
+
+Causal (asking about reasons or consequences)
+
+Hypothetical (posing ‘what if’ or imagined scenarios)
+
+Opinion-based (eliciting a personal or character viewpoint)
+
+Clarifying (asking for more explanation or elaboration)
+
+Predictive (asking what might happen next)
+
+Evaluative (judging quality, importance, or impact)
+
+Interpretive (exploring meaning or symbolism)
+
+Reflective (connecting the text to personal or broader experience)
+
+Quantitative (involving numbers, amounts, or measurements from the text)
+
+Procedural (asking about steps, methods, or processes)
+
+Ethical (raising moral or value-based questions)
+
+Motivational (asking about reasons behind actions or decisions)
+
+Definition-based (asking for the meaning of a term or concept in context)
+
+Contradiction-detecting (identifying inconsistencies or paradoxes)
+
+The response should be only the question in Arabic — no explanations, translations, or additional commentary.
 
 Text: {context}
 
