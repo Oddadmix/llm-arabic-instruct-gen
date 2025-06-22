@@ -212,14 +212,13 @@ class QAGenerator:
             messages = [
                 {"role": "user", "content": f"{instruction}\n\nText: {context}"}
             ]
+
+            logger.info(f"Messages: {messages}")
             
             # Generate response using pipeline
             outputs = self.pipeline(
                 messages,
-                max_new_tokens=100,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                do_sample=self.do_sample
+                max_new_tokens=2048,
             )
             
             # Extract the generated question
