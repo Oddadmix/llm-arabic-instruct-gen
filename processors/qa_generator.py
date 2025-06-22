@@ -156,7 +156,7 @@ class QAGenerator:
             
         logger.info("LLM model unloaded successfully")
     
-    def generate_qa_pairs(self, text_chunks: List[str]) -> List[Dict[str, Any]]:
+    def generate_qa_pairs(self, text_chunks: List[str], save_callback=None) -> List[Dict[str, Any]]:
         """Generate question-answer pairs from text chunks."""
         logger.info(f"Starting QA generation for {len(text_chunks)} text chunks")
         
@@ -176,6 +176,10 @@ class QAGenerator:
                 total_questions_generated += len(chunk_qa_pairs)
                 
                 logger.info(f"Chunk {i + 1}: Generated {len(chunk_qa_pairs)} QA pairs")
+                
+                # Save files incrementally if callback is provided
+                if save_callback:
+                    save_callback(chunk, chunk_qa_pairs, i)
                 
                 # Log progress every 10 chunks
                 if (i + 1) % 10 == 0:

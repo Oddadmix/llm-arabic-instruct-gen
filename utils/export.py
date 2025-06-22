@@ -195,4 +195,31 @@ class DataExporter:
                 json.dump(qa_pair, f, indent=2, ensure_ascii=False)
         
         logger.info(f"Exported {len(qa_pairs)} QA pairs as .json files to {qa_pairs_dir}")
+        return str(qa_pairs_dir)
+
+    def save_chunk_incrementally(self, chunk: str, chunk_index: int, base_filename: str) -> str:
+        """Save a single chunk as a .txt file incrementally."""
+        chunk_dir = self.output_dir / f"{base_filename}_chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Use zero-padded 4-digit format for chunk filename
+        chunk_path = chunk_dir / f"chunk_{chunk_index:04d}.txt"
+        with open(chunk_path, 'w', encoding='utf-8') as f:
+            f.write(chunk)
+        
+        logger.info(f"Saved chunk {chunk_index} to {chunk_path}")
+        return str(chunk_path)
+    
+    def save_qa_pairs_incrementally(self, qa_pairs: List[Dict[str, Any]], chunk_index: int, base_filename: str) -> str:
+        """Save QA pairs for a single chunk as individual .json files incrementally."""
+        qa_pairs_dir = self.output_dir / f"{base_filename}_qa_pairs"
+        qa_pairs_dir.mkdir(parents=True, exist_ok=True)
+        
+        for qa_idx, qa_pair in enumerate(qa_pairs):
+            # Use zero-padded 4-digit format for QA pair filename
+            qa_file = qa_pairs_dir / f"qa_pair_{chunk_index:04d}_{qa_idx:04d}.json"
+            with open(qa_file, 'w', encoding='utf-8') as f:
+                json.dump(qa_pair, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Saved {len(qa_pairs)} QA pairs for chunk {chunk_index} to {qa_pairs_dir}")
         return str(qa_pairs_dir) 

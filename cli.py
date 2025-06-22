@@ -52,6 +52,7 @@ Examples:
   python cli.py --pdf-file document.pdf --output-format json
   python cli.py --pdf-file document.pdf --chunk-size 500 --questions-per-chunk 5
   python cli.py --pdf-file document.pdf --llm-model Qwen/Qwen2.5-32B-Instruct --embedding-model Qwen/Qwen2-0.5B-Instruct
+  python cli.py --pdf-file document.pdf --max-pages 10  # Process only first 10 pages
   python cli.py --pdf-file document.pdf --no-offload  # Disable model offloading to save memory
         """
     )
@@ -262,16 +263,6 @@ def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
     logger.info("Generating embeddings...")
     embeddings = embedding_generator.generate_embeddings(chunks)
     
-    # Generate QA pairs
-    logger.info("Generating question-answer pairs...")
-    qa_pairs = qa_generator.generate_qa_pairs(chunks)
-    
-    if not qa_pairs:
-        logger.warning("No QA pairs generated")
-        return
-    
-    logger.info(f"Generated {len(qa_pairs)} QA pairs")
-    
     # Export dataset
     logger.info("Exporting dataset...")
     base_filename = pdf_path.stem
@@ -279,16 +270,27 @@ def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
     # Determine export settings - by default, save individual files unless --no-save-individual is used
     save_individual_files = not args.no_save_individual
     
-    # Export chunks as .txt files for inspection
-    if save_individual_files:
-        logger.info("Exporting text chunks as individual .txt files...")
-        chunks_dir = exporter.export_chunks_as_txt(chunks, base_filename)
-        logger.info(f"Exported {len(chunks)} chunks to: {chunks_dir}")
-        
-        logger.info("Exporting QA pairs as individual .json files...")
-        qa_pairs_dir = exporter.export_qa_pairs_as_json(qa_pairs, base_filename)
-        logger.info(f"Exported {len(qa_pairs)} QA pairs to: {qa_pairs_dir}")
+    # Generate QA pairs
+    logger.info("Generating question-answer pairs...")
     
+    # Create callback function for incremental saving
+    def save_incrementally(chunk, chunk_qa_pairs, chunk_index):
+        """Callback function to save chunk and QA pairs incrementally."""
+        if save_individual_files:
+            # Save chunk
+            exporter.save_chunk_incrementally(chunk, chunk_index, base_filename)
+            # Save QA pairs for this chunk
+            exporter.save_qa_pairs_incrementally(chunk_qa_pairs, chunk_index, base_filename)
+    
+    qa_pairs = qa_generator.generate_qa_pairs(chunks, save_callback=save_incrementally if save_individual_files else None)
+    
+    if not qa_pairs:
+        logger.warning("No QA pairs generated")
+        return
+    
+    logger.info(f"Generated {len(qa_pairs)} QA pairs")
+    
+    # Note: Individual files are already saved incrementally, so we only need to export the combined formats
     if args.output_format == "all":
         exported_files = exporter.export_multiple_formats(qa_pairs, base_filename)
         logger.info(f"Exported dataset in multiple formats:")
@@ -305,6 +307,17 @@ def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
     metadata = exporter.create_metadata(qa_pairs, pdf_file)
     metadata_file = exporter.export_json([metadata], f"{base_filename}_metadata")
     logger.info(f"Exported metadata to: {metadata_file}")
+    
+    # Summary of saved files
+    if save_individual_files:
+        chunks_dir = exporter.output_dir / f"{base_filename}_chunks"
+        qa_pairs_dir = exporter.output_dir / f"{base_filename}_qa_pairs"
+        logger.info("=== INCREMENTAL SAVING SUMMARY ===")
+        logger.info(f"Individual chunks saved to: {chunks_dir}")
+        logger.info(f"Individual QA pairs saved to: {qa_pairs_dir}")
+        logger.info(f"Total chunks processed: {len(chunks)}")
+        logger.info(f"Total QA pairs generated: {len(qa_pairs)}")
+        logger.info("Files were saved incrementally during processing")
     
     logger.info("Processing completed successfully!")
 

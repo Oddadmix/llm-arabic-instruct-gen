@@ -42,6 +42,12 @@ Process a PDF file with default settings:
 python cli.py --pdf-file books/sample.pdf
 ```
 
+Process only the first page for testing:
+
+```bash
+python cli.py --pdf-file books/sample.pdf --max-pages 1
+```
+
 ### Advanced Usage
 
 Process with custom parameters:
@@ -53,6 +59,19 @@ python cli.py --pdf-file books/sample.pdf \
     --llm-model "Qwen/Qwen2.5-7B-Instruct" \
     --embedding-model "Qwen/Qwen2-0.5B-Instruct" \
     --output-dir my_output
+```
+
+Process only the first few pages of a large PDF:
+
+```bash
+# Process only the first 10 pages
+python cli.py --pdf-file books/large_document.pdf --max-pages 10
+
+# Process only the first 5 pages with custom chunk size
+python cli.py --pdf-file books/large_document.pdf --max-pages 5 --chunk-size 500
+
+# Process only first 3 pages for quick testing with smaller models
+python cli.py --pdf-file books/large_document.pdf --max-pages 3 --llm-model "Qwen/Qwen2.5-7B-Instruct"
 ```
 
 ### Export Control
@@ -143,6 +162,8 @@ python cli.py --pdf-file books/sample.pdf --config my_config.json
 - `--chunk-overlap`: Overlap between text chunks (overrides config)
 - `--max-pages`: Maximum number of pages to process (overrides config)
 
+**Note**: When `--max-pages` is not specified, all pages in the PDF will be processed. Use this option to limit processing for large documents or for testing purposes.
+
 ### QA Generation Options
 
 - `--questions-per-chunk`: Number of questions to generate per chunk (overrides config)
@@ -180,11 +201,17 @@ output/
 ├── sample_chunks.txt            # Individual text chunks
 ├── sample_embeddings.npy        # Vector embeddings
 ├── sample_metadata.json         # Processing metadata
-└── chunks/                      # Individual chunk files (if enabled)
-    ├── chunk_0001.txt
-    ├── chunk_0002.txt
+├── chunks/                      # Individual chunk files (saved incrementally)
+│   ├── chunk_0001.txt
+│   ├── chunk_0002.txt
+│   └── ...
+└── qa_pairs/                    # Individual QA pair files (saved incrementally)
+    ├── qa_pair_0001_0001.json
+    ├── qa_pair_0001_0002.json
     └── ...
 ```
+
+**Note**: Individual chunk and QA pair files are saved incrementally during processing, so they are available for inspection even if the process is interrupted.
 
 ## Memory Management Features
 
@@ -204,6 +231,15 @@ The tool includes intelligent memory management to handle large transformer mode
 - **Performance Mode**: Use `--no-offload` to keep models loaded for faster processing
 - **Batch Processing**: Embeddings are generated in configurable batches
 - **Progress Logging**: Memory usage and model loading states are logged
+
+### Incremental File Saving
+
+The tool saves files incrementally during processing to prevent data loss:
+
+- **Chunk Files**: Each text chunk is saved as a separate .txt file immediately after processing
+- **QA Pair Files**: Each QA pair is saved as a separate .json file immediately after generation
+- **Progress Recovery**: If processing is interrupted, you can resume from where you left off
+- **Real-time Monitoring**: Files are available for inspection as they are generated
 
 ## Supported Models
 
