@@ -122,6 +122,14 @@ Examples:
     )
     
     parser.add_argument(
+        "--model-type",
+        type=str,
+        choices=["auto", "instruction", "completion"],
+        default="auto",
+        help="Model type: auto (auto-detect), instruction (instruction-based), or completion (prompt-based) (overrides config)"
+    )
+    
+    parser.add_argument(
         "--temperature",
         type=float,
         help="Temperature for LLM generation (overrides config)"
@@ -227,6 +235,7 @@ def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
     qa_generator = QAGenerator(
         num_questions_per_chunk=args.questions_per_chunk or settings.get("qa_generator.num_questions_per_chunk"),
         llm_model=args.llm_model or settings.get("qa_generator.llm_model"),
+        model_type=args.model_type or settings.get("qa_generator.model_type", "auto"),
         max_length=args.max_length or settings.get("qa_generator.max_length"),
         temperature=args.temperature or settings.get("qa_generator.temperature"),
         top_p=args.top_p or settings.get("qa_generator.top_p"),

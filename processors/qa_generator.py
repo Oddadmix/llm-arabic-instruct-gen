@@ -18,6 +18,7 @@ class QAGenerator:
     
     def __init__(self, num_questions_per_chunk: int = 3, 
                  llm_model: str = "Qwen/Qwen2.5-32B-Instruct",
+                 model_type: str = "auto",
                  max_length: int = 512,
                  temperature: float = 0.7,
                  top_p: float = 0.9,
@@ -25,6 +26,7 @@ class QAGenerator:
                  offload_model: bool = True):
         self.num_questions_per_chunk = num_questions_per_chunk
         self.llm_model = llm_model
+        self.model_type = model_type
         self.max_length = max_length
         self.temperature = temperature
         self.top_p = top_p
@@ -33,6 +35,7 @@ class QAGenerator:
         
         logger.info(f"QAGenerator initialized with:")
         logger.info(f"  - LLM Model: {llm_model}")
+        logger.info(f"  - Model Type: {model_type}")
         logger.info(f"  - Questions per chunk: {num_questions_per_chunk}")
         logger.info(f"  - Temperature: {temperature}")
         logger.info(f"  - Top-p: {top_p}")
@@ -205,8 +208,16 @@ class QAGenerator:
         try:
             logger.debug(f"Generating question from context {question_index + 1}")
             
-            # Create English prompt for question generation, but request Arabic output
-            prompt = f"""Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under any of the following types (but not limited to):
+            # Check if this is an instruction-based model
+            if self._is_instruction_model():
+                # Use instruction format for instruction-based models
+                prompt = self._format_instruction_prompt(
+                    instruction="Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under various types like factual, inferential, analytical, comparative, causal, hypothetical, opinion-based, clarifying, predictive, evaluative, interpretive, reflective, quantitative, procedural, ethical, motivational, definition-based, contradiction-detecting, etc. The response should be only the question in Arabic — no explanations, translations, or additional commentary.",
+                    input_text=f"Text: {context}"
+                )
+            else:
+                # Use traditional prompt format for non-instruction models
+                prompt = f"""Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under any of the following types (but not limited to):
 
 Factual (retrieving specific details)
 
@@ -280,8 +291,16 @@ Question (in Arabic):"""
         try:
             logger.debug(f"Generating answer for question: {question[:50]}...")
             
-            # Create English prompt for answer generation, but request Arabic output
-            prompt = f"""Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured.
+            # Check if this is an instruction-based model
+            if self._is_instruction_model():
+                # Use instruction format for instruction-based models
+                prompt = self._format_instruction_prompt(
+                    instruction="Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured.",
+                    input_text=f"Text: {context}\n\nQuestion: {question}"
+                )
+            else:
+                # Use traditional prompt format for non-instruction models
+                prompt = f"""Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured.
 
 Text: {context}
 
@@ -313,6 +332,22 @@ Answer (in Arabic):"""
         except Exception as e:
             logger.error(f"Error generating answer from question-context with LLM: {e}")
             return ""
+    
+    def _format_instruction_prompt(self, instruction: str, input_text: str) -> str:
+        """Format prompt for instruction-based models like Qwen2.5-Instruct."""
+        # Different models use different instruction formats
+        if "qwen" in self.llm_model.lower():
+            # Qwen instruction format
+            return f"<|im_start|>system\nYou are a helpful AI assistant that generates questions and answers in Arabic based on provided text.<|im_end|>\n<|im_start|>user\n{instruction}\n\n{input_text}<|im_end|>\n<|im_start|>assistant\n"
+        elif "llama" in self.llm_model.lower() or "mistral" in self.llm_model.lower():
+            # Llama/Mistral instruction format
+            return f"[INST] {instruction}\n\n{input_text} [/INST]"
+        elif "gemma" in self.llm_model.lower():
+            # Gemma instruction format
+            return f"<start_of_turn>user\n{instruction}\n\n{input_text}<end_of_turn>\n<start_of_turn>model\n"
+        else:
+            # Generic instruction format
+            return f"### Instruction:\n{instruction}\n\n### Input:\n{input_text}\n\n### Response:\n"
     
     def _clean_question(self, question: str) -> str:
         """Clean up generated question."""
@@ -365,4 +400,18 @@ Answer (in Arabic):"""
     def __del__(self):
         """Cleanup when the object is destroyed."""
         if self.offload_model:
-            self._unload_llm() 
+            self._unload_llm()
+    
+    def _is_instruction_model(self) -> bool:
+        """Determine if the model is instruction-based."""
+        if self.model_type == "auto":
+            # Auto-detect based on model name
+            return "instruct" in self.llm_model.lower()
+        elif self.model_type == "instruction":
+            return True
+        elif self.model_type == "completion":
+            return False
+        else:
+            # Default to auto-detection for unknown types
+            logger.warning(f"Unknown model_type '{self.model_type}', using auto-detection")
+            return "instruct" in self.llm_model.lower() 

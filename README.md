@@ -78,6 +78,25 @@ python cli.py --file books/sample.txt \
     --llm-model "Qwen/Qwen2.5-7B-Instruct"
 ```
 
+Process with explicit model type specification:
+
+```bash
+# For instruction-based models (even if name doesn't contain "instruct")
+python cli.py --file books/sample.pdf \
+    --llm-model "Qwen/Qwen2.5-7B" \
+    --model-type instruction
+
+# For completion/prompt-based models
+python cli.py --file books/sample.txt \
+    --llm-model "Qwen/Qwen2.5-7B" \
+    --model-type completion
+
+# Auto-detect model type (default)
+python cli.py --file books/sample.pdf \
+    --llm-model "Qwen/Qwen2.5-7B-Instruct" \
+    --model-type auto
+```
+
 Process only the first few pages of a large PDF:
 
 ```bash
@@ -132,6 +151,7 @@ The tool uses a default configuration file (`config/default_config.json`) with t
     "num_questions_per_chunk": 3,
     "max_answer_length": 200,
     "llm_model": "Qwen/Qwen3-8B",
+    "model_type": "auto",
     "max_length": 512,
     "temperature": 0.7,
     "top_p": 0.9,
@@ -185,6 +205,7 @@ python cli.py --file books/sample.txt --config my_config.json
 
 - `--questions-per-chunk`: Number of questions to generate per chunk (overrides config)
 - `--llm-model`: LLM model for question generation (overrides config)
+- `--model-type`: Model type: auto (auto-detect), instruction (instruction-based), or completion (prompt-based) (overrides config)
 - `--temperature`: Temperature for LLM generation (overrides config)
 - `--top-p`: Top-p for LLM generation (overrides config)
 - `--max-length`: Maximum length for LLM generation (overrides config)
