@@ -1,10 +1,10 @@
 # LLM Dataset Instruction Generator
 
-A comprehensive tool for generating instruction datasets from PDF documents using Large Language Models (LLMs). This tool extracts text from PDFs, chunks it into manageable pieces, generates question-answer pairs using LLMs, and creates embeddings for similarity search.
+A comprehensive tool for generating instruction datasets from PDF and TXT documents using Large Language Models (LLMs). This tool extracts text from PDFs and TXT files, chunks it into manageable pieces, generates question-answer pairs using LLMs, and creates embeddings for similarity search.
 
 ## Features
 
-- **PDF Text Extraction**: Extract text from PDF documents with support for multiple pages
+- **Multi-Format Document Support**: Extract text from PDF documents and TXT files
 - **Intelligent Text Chunking**: Split text into optimal chunks with configurable overlap
 - **LLM-Powered QA Generation**: Generate high-quality question-answer pairs using transformer models
 - **Embedding Generation**: Create vector embeddings for semantic search and similarity matching
@@ -39,13 +39,19 @@ pip install -e .
 Process a PDF file with default settings:
 
 ```bash
-python cli.py --pdf-file books/sample.pdf
+python cli.py --file books/sample.pdf
 ```
 
-Process only the first page for testing:
+Process a TXT file with default settings:
 
 ```bash
-python cli.py --pdf-file books/sample.pdf --max-pages 1
+python cli.py --file books/sample.txt
+```
+
+Process only the first page for testing (PDF only):
+
+```bash
+python cli.py --file books/sample.pdf --max-pages 1
 ```
 
 ### Advanced Usage
@@ -53,12 +59,21 @@ python cli.py --pdf-file books/sample.pdf --max-pages 1
 Process with custom parameters:
 
 ```bash
-python cli.py --pdf-file books/sample.pdf \
+python cli.py --file books/sample.pdf \
     --chunk-size 800 \
     --questions-per-chunk 5 \
     --llm-model "Qwen/Qwen2.5-7B-Instruct" \
     --embedding-model "Qwen/Qwen2-0.5B-Instruct" \
     --output-dir my_output
+```
+
+Process TXT file with custom parameters:
+
+```bash
+python cli.py --file books/sample.txt \
+    --chunk-size 600 \
+    --questions-per-chunk 3 \
+    --llm-model "Qwen/Qwen2.5-7B-Instruct"
 ```
 
 Process only the first few pages of a large PDF:
@@ -80,10 +95,10 @@ Control which files are saved:
 
 ```bash
 # Save only the main output files (no individual chunk/QA files)
-python cli.py --pdf-file books/sample.pdf --no-save-individual
+python cli.py --file books/sample.pdf --no-save-individual
 
 # Default behavior - saves all files including individual chunks and QA pairs
-python cli.py --pdf-file books/sample.pdf
+python cli.py --file books/sample.txt
 ```
 
 ### Memory Management
@@ -92,10 +107,10 @@ The tool includes automatic memory management to handle large models efficiently
 
 ```bash
 # Enable model offloading (default) - saves memory by unloading models when not in use
-python cli.py --pdf-file books/sample.pdf
+python cli.py --file books/sample.pdf
 
 # Disable model offloading - keeps models loaded for faster processing
-python cli.py --pdf-file books/sample.pdf --no-offload
+python cli.py --file books/sample.txt --no-offload
 ```
 
 ## Configuration
@@ -143,25 +158,26 @@ The tool uses a default configuration file (`config/default_config.json`) with t
 Create a custom configuration file and use it:
 
 ```bash
-python cli.py --pdf-file books/sample.pdf --config my_config.json
+python cli.py --file books/sample.pdf --config my_config.json
+python cli.py --file books/sample.txt --config my_config.json
 ```
 
 ## Command Line Options
 
 ### Main Options
 
-- `--pdf-file`: Path to the PDF file to process (required)
+- `--file`: Path to the PDF or TXT file to process (required)
 - `--config`: Path to configuration file (default: config/default_config.json)
 - `--output-dir`: Output directory for generated files (default: output)
 - `--output-format`: Output format (json, csv, all) (default: all)
 
-### PDF Processing Options
+### Document Processing Options
 
 - `--chunk-size`: Size of text chunks (overrides config)
 - `--chunk-overlap`: Overlap between text chunks (overrides config)
-- `--max-pages`: Maximum number of pages to process (overrides config)
+- `--max-pages`: Maximum number of pages to process (for PDFs only, overrides config)
 
-**Note**: When `--max-pages` is not specified, all pages in the PDF will be processed. Use this option to limit processing for large documents or for testing purposes.
+**Note**: When `--max-pages` is not specified, all pages in the PDF will be processed. Use this option to limit processing for large documents or for testing purposes. This option only applies to PDF files.
 
 ### QA Generation Options
 
@@ -274,20 +290,20 @@ You can also use the tool programmatically:
 
 ```python
 from config import Settings
-from processors import PDFProcessor, TextChunker, QAGenerator
+from processors import DocumentProcessor, TextChunker, QAGenerator
 from utils import EmbeddingGenerator, DataExporter
 
 # Load configuration
 settings = Settings("config/default_config.json")
 
 # Initialize processors
-pdf_processor = PDFProcessor()
+document_processor = DocumentProcessor()
 chunker = TextChunker()
 qa_generator = QAGenerator(offload_model=True)
 embedding_generator = EmbeddingGenerator(offload_model=True)
 
-# Process PDF
-text = pdf_processor.extract_text("books/sample.pdf")
+# Process PDF or TXT file
+text = document_processor.extract_text("books/sample.pdf")  # or "books/sample.txt"
 chunks = chunker.chunk_text(text)
 qa_pairs = qa_generator.generate_qa_pairs(chunks)
 embeddings = embedding_generator.generate_embeddings(chunks)
@@ -323,4 +339,29 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Built with Hugging Face Transformers
 - Uses Qwen models for LLM and embedding generation
-- Inspired by Alpaca instruction format 
+- Inspired by Alpaca instruction format
+
+## Supported File Formats
+
+The tool supports the following file formats:
+
+### PDF Files (.pdf)
+- **Text Extraction**: Extracts text content from PDF documents
+- **Page Limiting**: Use `--max-pages` to limit the number of pages processed
+- **Multi-page Support**: Processes all pages by default
+- **Image-only Page Handling**: Skips pages with no extractable text
+
+### TXT Files (.txt)
+- **Text Extraction**: Reads plain text files directly
+- **Encoding Support**: Automatically detects and handles multiple encodings:
+  - UTF-8 (with and without BOM)
+  - CP1256 (Windows Arabic)
+  - ISO-8859-6 (Arabic)
+  - Windows-1256 (Arabic)
+- **Fallback Handling**: Uses error handling for problematic encodings
+- **Paragraph Splitting**: Splits text into paragraphs for processing
+
+### File Size Considerations
+- **Large Files**: The tool can handle large documents efficiently
+- **Memory Management**: Automatic model offloading prevents memory issues
+- **Incremental Processing**: Files are processed in chunks to manage memory usage 

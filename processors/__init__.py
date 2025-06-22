@@ -2,8 +2,8 @@
 Document processing modules for LLM Dataset Instruction Generator.
 """
 
-from .pdf_processor import PDFProcessor
+from .document_processor import DocumentProcessor
 from .chunker import TextChunker
 from .qa_generator import QAGenerator
 
-__all__ = ["PDFProcessor", "TextChunker", "QAGenerator"] 
+__all__ = ["DocumentProcessor", "TextChunker", "QAGenerator"] 

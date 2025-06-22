@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from config import Settings
-from processors import PDFProcessor, TextChunker, QAGenerator
+from processors import DocumentProcessor, TextChunker, QAGenerator
 from utils import DataExporter, setup_colored_logging, EmbeddingGenerator
 import logging
 
@@ -30,10 +30,10 @@ def main():
         settings = Settings(args.config)
         
         # Process PDF
-        if args.pdf_file:
-            process_pdf(args.pdf_file, settings, args)
+        if args.file:
+            process_pdf(args.file, settings, args)
         else:
-            logger.error("No PDF file specified. Use --pdf-file option.")
+            logger.error("No file specified. Use --file option.")
             sys.exit(1)
             
     except Exception as e:
@@ -44,24 +44,25 @@ def main():
 def create_parser() -> argparse.ArgumentParser:
     """Create command-line argument parser."""
     parser = argparse.ArgumentParser(
-        description="LLM Dataset Instruction Generator - Generate instruction datasets from PDF documents",
+        description="LLM Dataset Instruction Generator - Generate instruction datasets from PDF and TXT documents",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python cli.py --pdf-file document.pdf
-  python cli.py --pdf-file document.pdf --output-format json
-  python cli.py --pdf-file document.pdf --chunk-size 500 --questions-per-chunk 5
-  python cli.py --pdf-file document.pdf --llm-model Qwen/Qwen2.5-32B-Instruct --embedding-model Qwen/Qwen2-0.5B-Instruct
-  python cli.py --pdf-file document.pdf --max-pages 10  # Process only first 10 pages
-  python cli.py --pdf-file document.pdf --no-offload  # Disable model offloading to save memory
+  python cli.py --file document.pdf
+  python cli.py --file document.txt
+  python cli.py --file document.pdf --output-format json
+  python cli.py --file document.txt --chunk-size 500 --questions-per-chunk 5
+  python cli.py --file document.pdf --llm-model Qwen/Qwen2.5-32B-Instruct --embedding-model Qwen/Qwen2-0.5B-Instruct
+  python cli.py --file document.txt --max-pages 10  # Process only first 10 pages (for PDFs)
+  python cli.py --file document.pdf --no-offload  # Disable model offloading to save memory
         """
     )
     
     # Required arguments
     parser.add_argument(
-        "--pdf-file",
+        "--file",
         type=str,
-        help="Path to the PDF file to process"
+        help="Path to the PDF or TXT file to process"
     )
     
     # Optional arguments
@@ -87,7 +88,7 @@ Examples:
         help="Output format for generated dataset (default: all)"
     )
     
-    # PDF processing options
+    # Document processing options
     parser.add_argument(
         "--chunk-size",
         type=int,
@@ -103,7 +104,7 @@ Examples:
     parser.add_argument(
         "--max-pages",
         type=int,
-        help="Maximum number of pages to process (overrides config)"
+        help="Maximum number of pages to process (for PDFs only, overrides config)"
     )
     
     # QA generation options
@@ -191,23 +192,29 @@ Examples:
 
 
 def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
-    """Process PDF file and generate instruction dataset."""
+    """Process PDF or TXT file and generate instruction dataset."""
     logger = logging.getLogger(__name__)
     
-    # Validate PDF file
-    pdf_path = Path(pdf_file)
-    if not pdf_path.exists():
-        logger.error(f"PDF file not found: {pdf_file}")
+    # Validate file
+    file_path = Path(pdf_file)
+    if not file_path.exists():
+        logger.error(f"File not found: {pdf_file}")
         return
     
-    logger.info(f"Processing PDF: {pdf_file}")
+    # Check file type
+    file_extension = file_path.suffix.lower()
+    if file_extension not in ['.pdf', '.txt']:
+        logger.error(f"Unsupported file type: {file_extension}. Supported types: .pdf, .txt")
+        return
+    
+    logger.info(f"Processing {file_extension.upper()} file: {pdf_file}")
     
     # Determine model offloading setting
     offload_models = not args.no_offload
     logger.info(f"Model offloading: {'enabled' if offload_models else 'disabled'}")
     
     # Initialize processors with settings
-    pdf_processor = PDFProcessor(
+    document_processor = DocumentProcessor(
         max_pages=args.max_pages or settings.get("pdf_processor.max_pages")
     )
     
@@ -240,12 +247,12 @@ def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
     
     exporter = DataExporter(output_dir=args.output_dir)
     
-    # Extract text from PDF
-    logger.info("Extracting text from PDF...")
-    text = pdf_processor.extract_text(pdf_file)
+    # Extract text from file
+    logger.info(f"Extracting text from {file_extension.upper()} file...")
+    text = document_processor.extract_text(pdf_file)
     
     if not text.strip():
-        logger.warning("No text extracted from PDF")
+        logger.warning(f"No text extracted from {file_extension.upper()} file")
         return
     
     # Chunk the text
@@ -264,7 +271,7 @@ def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
     
     # Export dataset
     logger.info("Exporting dataset...")
-    base_filename = pdf_path.stem
+    base_filename = file_path.stem
     
     # Determine export settings - by default, save individual files unless --no-save-individual is used
     save_individual_files = not args.no_save_individual
