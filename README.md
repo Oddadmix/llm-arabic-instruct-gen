@@ -113,7 +113,6 @@ The tool uses a default configuration file (`config/default_config.json`) with t
   },
   "qa_generator": {
     "num_questions_per_chunk": 3,
-    "question_types": ["what", "how", "why"],
     "max_answer_length": 200,
     "llm_model": "Qwen/Qwen3-8B",
     "max_length": 512,
@@ -259,8 +258,11 @@ The tool saves files incrementally during processing to prevent data loss:
 
 ## Arabic Language Support
 
-The tool includes full support for Arabic text processing:
+The tool includes full support for Arabic text processing and question generation:
 
+- **Context-Aware Question Generation**: LLM generates intelligent questions based on the actual content of the text
+- **Arabic-Only Output**: All questions and answers are generated in Arabic only
+- **Arabic Prompts**: LLM prompts are in Arabic to ensure Arabic-only output
 - **Arabic Punctuation**: Proper handling of Arabic punctuation marks
 - **Sentence Splitting**: Intelligent sentence boundary detection for Arabic
 - **Text Chunking**: Optimal chunking that respects Arabic text structure

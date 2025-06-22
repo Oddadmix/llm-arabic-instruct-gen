@@ -6,7 +6,6 @@
   },
   "qa_generator": {
     "num_questions_per_chunk": 3,
-    "question_types": ["what", "how", "why"],
     "max_answer_length": 200,
     "llm_model": "Qwen/Qwen3-8B",
     "max_length": 512,

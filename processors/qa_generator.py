@@ -25,7 +25,6 @@ class QAGenerator:
                  do_sample: bool = True,
                  offload_model: bool = True):
         self.num_questions_per_chunk = num_questions_per_chunk
-        self.question_types = question_types or ["what", "how", "why"]
         self.llm_model = llm_model
         self.max_length = max_length
         self.temperature = temperature
@@ -36,7 +35,6 @@ class QAGenerator:
         logger.info(f"QAGenerator initialized with:")
         logger.info(f"  - LLM Model: {llm_model}")
         logger.info(f"  - Questions per chunk: {num_questions_per_chunk}")
-        logger.info(f"  - Question types: {question_types}")
         logger.info(f"  - Temperature: {temperature}")
         logger.info(f"  - Top-p: {top_p}")
         logger.info(f"  - Max length: {max_length}")
@@ -48,28 +46,6 @@ class QAGenerator:
         self.model = None
         self.device = self._get_device()
         self.model_loaded = False
-        
-        # Question templates for different types
-        self.question_templates = {
-            "what": [
-                "What is {topic}?",
-                "What does {topic} refer to?",
-                "What are the main aspects of {topic}?",
-                "What is the definition of {topic}?"
-            ],
-            "how": [
-                "How does {topic} work?",
-                "How is {topic} implemented?",
-                "How can {topic} be achieved?",
-                "How does {topic} function?"
-            ],
-            "why": [
-                "Why is {topic} important?",
-                "Why does {topic} matter?",
-                "Why should we consider {topic}?",
-                "Why is {topic} relevant?"
-            ]
-        }
         
         # Only load model if not offloading
         if not self.offload_model:
@@ -210,57 +186,108 @@ class QAGenerator:
         
         qa_pairs = []
         
-        # Extract key topics from the chunk
-        logger.debug("Extracting topics from chunk...")
-        topics = self._extract_topics(chunk)
-        logger.debug(f"Found {len(topics)} potential topics: {topics[:5]}...")  # Log first 5 topics
+        # Generate questions directly from the context
+        logger.debug("Generating context-aware questions...")
         
-        # Generate questions for each topic
-        questions_to_generate = min(len(topics), self.num_questions_per_chunk)
-        logger.debug(f"Will generate {questions_to_generate} questions from {len(topics)} topics")
-        
-        for topic_idx, topic in enumerate(topics[:self.num_questions_per_chunk]):
-            question_type = random.choice(self.question_types)
-            logger.debug(f"Generating {question_type} question for topic: {topic}")
+        for q_idx in range(self.num_questions_per_chunk):
+            logger.debug(f"Generating question {q_idx + 1}/{self.num_questions_per_chunk}")
             
             if self.model is not None and self.model_loaded:
-                # Use LLM for question generation
-                logger.debug("Using LLM for question generation...")
-                question = self._generate_question_with_llm(chunk, topic, question_type)
-                answer = self._generate_answer_with_llm(chunk, topic, question)
+                # Use LLM for context-aware question generation
+                logger.debug("Using LLM for context-aware question generation...")
+                question = self._generate_context_aware_question(chunk, q_idx)
+                answer = self._generate_answer_with_llm(chunk, "", question)
             else:
-                # Fallback to template-based generation
-                logger.debug("Using template-based generation...")
-                question = self._generate_question(topic, question_type)
-                answer = self._generate_answer(chunk, topic, question)
+                # Fallback to simple question generation
+                logger.debug("Using fallback question generation...")
+                question = self._generate_fallback_question(chunk, q_idx)
+                answer = self._generate_answer(chunk, "", question)
             
             qa_pair = {
-                "id": f"chunk_{chunk_index}_topic_{topic_idx}",
+                "id": f"chunk_{chunk_index}_question_{q_idx}",
                 "question": question,
                 "answer": answer,
                 "context": chunk,
-                "question_type": question_type,
-                "topic": topic,
+                "question_index": q_idx,
                 "chunk_index": chunk_index
             }
             
             qa_pairs.append(qa_pair)
-            logger.debug(f"Generated QA pair {topic_idx + 1}: {len(question)} chars question, {len(answer)} chars answer")
+            logger.debug(f"Generated QA pair {q_idx + 1}: {len(question)} chars question, {len(answer)} chars answer")
         
         logger.debug(f"Generated {len(qa_pairs)} QA pairs for chunk {chunk_index}")
         return qa_pairs
+    
+    def _generate_context_aware_question(self, context: str, question_index: int) -> str:
+        """Generate a context-aware question using the LLM model."""
+        try:
+            logger.debug(f"Generating context-aware question {question_index + 1}")
+            
+            # Create prompt for context-aware question generation in Arabic
+            prompt = f"""بناءً على النص التالي، اطرح سؤالاً ذكي ومفيد يمكن الإجابة عليه من النص:
+
+النص: {context[:800]}...
+
+السؤال:"""
+            
+            # Tokenize input
+            inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
+            inputs = inputs.to(self.device)
+            logger.debug(f"Tokenized input: {inputs.shape[1]} tokens")
+            
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    inputs,
+                    max_length=inputs.shape[1] + 100,
+                    temperature=self.temperature,
+                    top_p=self.top_p,
+                    do_sample=self.do_sample,
+                    pad_token_id=self.tokenizer.eos_token_id
+                )
+            
+            # Decode response
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract the generated question
+            question = response[len(prompt):].strip()
+            
+            # Clean up the question
+            question = self._clean_question(question)
+            
+            logger.debug(f"LLM generated context-aware question: {question[:100]}...")
+            
+            return question if question else self._generate_fallback_question(context, question_index)
+            
+        except Exception as e:
+            logger.error(f"Error generating context-aware question with LLM: {e}")
+            return self._generate_fallback_question(context, question_index)
+    
+    def _generate_fallback_question(self, context: str, question_index: int) -> str:
+        """Generate a simple fallback question when LLM is not available."""
+        # Simple fallback: ask about the main topic or concept
+        sentences = context.split('.')
+        if sentences:
+            # Take the first meaningful sentence and create a question
+            first_sentence = sentences[0].strip()
+            if len(first_sentence) > 20:
+                return f"ما هو المحتوى الرئيسي في هذا النص؟"
+            else:
+                return f"ما هي الفكرة الأساسية المطروحة هنا؟"
+        else:
+            return f"ما هو موضوع هذا النص؟"
     
     def _generate_question_with_llm(self, context: str, topic: str, question_type: str) -> str:
         """Generate a question using the LLM model."""
         try:
             logger.debug(f"Generating {question_type} question for topic '{topic}' using LLM")
             
-            # Create prompt for question generation
-            prompt = f"""Based on the following context, generate a {question_type} question about {topic}:
+            # Create prompt for question generation in Arabic
+            prompt = f"""بناءً على النص التالي، اطرح سؤالاً من نوع "{question_type}" حول "{topic}":
 
-Context: {context[:500]}...
+النص: {context[:500]}...
 
-Question:"""
+السؤال:"""
             
             # Tokenize input
             inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
@@ -300,14 +327,14 @@ Question:"""
         try:
             logger.debug(f"Generating answer for question: {question[:50]}...")
             
-            # Create prompt for answer generation
-            prompt = f"""Based on the following context, answer this question:
+            # Create prompt for answer generation in Arabic
+            prompt = f"""بناءً على النص التالي، أجب على هذا السؤال:
 
-Context: {context[:800]}...
+النص: {context[:800]}...
 
-Question: {question}
+السؤال: {question}
 
-Answer:"""
+الإجابة:"""
             
             # Tokenize input
             inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
@@ -375,29 +402,13 @@ Answer:"""
     
     def _extract_topics(self, text: str) -> List[str]:
         """Extract potential topics from text for question generation."""
-        logger.debug("Extracting topics from text...")
-        
-        # Simple topic extraction - can be improved with NLP
-        words = text.split()
-        
-        # Filter for potential topics (nouns, longer words)
-        topics = []
-        for word in words:
-            word = word.strip('.,!?;:()[]{}').lower()
-            if len(word) > 4 and word.isalpha():
-                topics.append(word)
-        
-        # Remove duplicates and limit
-        unique_topics = list(set(topics))[:10]
-        logger.debug(f"Extracted {len(unique_topics)} unique topics")
-        
-        return unique_topics
+        # This method is no longer needed as we generate context-aware questions
+        return []
     
     def _generate_question(self, topic: str, question_type: str) -> str:
         """Generate a question based on topic and type (fallback method)."""
-        templates = self.question_templates.get(question_type, self.question_templates["what"])
-        template = random.choice(templates)
-        return template.format(topic=topic)
+        # This method is now empty as we'll generate context-aware questions
+        return ""
     
     def _generate_answer(self, context: str, topic: str, question: str) -> str:
         """Generate an answer based on context and question (fallback method)."""

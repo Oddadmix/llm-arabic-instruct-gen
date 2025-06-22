@@ -219,7 +219,6 @@ def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
     # QA Generator with LLM configuration
     qa_generator = QAGenerator(
         num_questions_per_chunk=args.questions_per_chunk or settings.get("qa_generator.num_questions_per_chunk"),
-        question_types=settings.get("qa_generator.question_types"),
         llm_model=args.llm_model or settings.get("qa_generator.llm_model"),
         max_length=args.max_length or settings.get("qa_generator.max_length"),
         temperature=args.temperature or settings.get("qa_generator.temperature"),
