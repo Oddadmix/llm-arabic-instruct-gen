@@ -161,8 +161,7 @@ class EmbeddingGenerator:
             
         except Exception as e:
             logger.error(f"Error generating embeddings: {e}")
-            logger.warning("Falling back to random embeddings")
-            return self._generate_fallback(texts)
+            raise
         finally:
             # Unload model after generation if offloading is enabled
             if self.offload_model:
@@ -210,14 +209,6 @@ class EmbeddingGenerator:
         """Perform mean pooling on token embeddings."""
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-    
-    def _generate_fallback(self, texts: List[str]) -> np.ndarray:
-        """Generate random embeddings as fallback."""
-        # Generate random embeddings of dimension 768 (common for transformer models)
-        embedding_dim = 768
-        embeddings = np.random.rand(len(texts), embedding_dim)
-        logger.warning(f"Generated random fallback embeddings for {len(texts)} texts (dimension: {embedding_dim})")
-        return embeddings
     
     def similarity_search(self, query_embedding: np.ndarray, embeddings: np.ndarray, top_k: int = 5) -> tuple:
         """Find most similar embeddings to query."""

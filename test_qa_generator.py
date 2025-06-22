@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 def test_qa_generator():
-    """Test the QA generator with fallback methods."""
+    """Test the QA generator initialization and structure."""
     
     # Initialize QA generator with offloading to avoid loading the model
     qa_generator = QAGenerator(
@@ -27,31 +27,37 @@ def test_qa_generator():
     يشمل الذكاء الاصطناعي عدة تقنيات مثل التعلم الآلي والشبكات العصبية ومعالجة اللغة الطبيعية.
     """
     
-    logger.info("Testing QA generation with fallback methods...")
+    logger.info("Testing QA generator initialization...")
+    logger.info(f"QA Generator initialized with {qa_generator.num_questions_per_chunk} questions per chunk")
+    logger.info(f"LLM Model: {qa_generator.llm_model}")
+    logger.info(f"Offload model: {qa_generator.offload_model}")
     
-    # Test question generation
-    logger.info("Testing question generation...")
-    question = qa_generator._generate_fallback_question(test_chunk, 0)
-    logger.info(f"Generated question: {question}")
+    # Test that the generator structure is correct
+    logger.info("Testing QA generator structure...")
     
-    # Test answer generation
-    logger.info("Testing answer generation...")
-    answer = qa_generator._generate_fallback_answer(test_chunk, question)
-    logger.info(f"Generated answer: {answer}")
+    # Test that the methods exist
+    assert hasattr(qa_generator, '_generate_question_from_context')
+    assert hasattr(qa_generator, '_generate_answer_from_question_context')
+    assert hasattr(qa_generator, '_clean_question')
+    assert hasattr(qa_generator, '_clean_answer')
     
-    # Test full QA pair generation
-    logger.info("Testing full QA pair generation...")
-    qa_pairs = qa_generator._generate_qa_for_chunk(test_chunk, 0)
+    logger.info("All required methods are present")
     
-    logger.info(f"Generated {len(qa_pairs)} QA pairs:")
-    for i, qa_pair in enumerate(qa_pairs):
-        logger.info(f"QA Pair {i+1}:")
-        logger.info(f"  Question: {qa_pair['question']}")
-        logger.info(f"  Answer: {qa_pair['answer']}")
-        logger.info(f"  ID: {qa_pair['id']}")
-        logger.info("---")
+    # Test text cleaning methods
+    logger.info("Testing text cleaning methods...")
+    
+    test_question = "ما هو الذكاء الاصطناعي"
+    cleaned_question = qa_generator._clean_question(test_question)
+    logger.info(f"Original question: {test_question}")
+    logger.info(f"Cleaned question: {cleaned_question}")
+    
+    test_answer = "الذكاء الاصطناعي هو مجال من مجالات علوم الحاسوب"
+    cleaned_answer = qa_generator._clean_answer(test_answer)
+    logger.info(f"Original answer: {test_answer}")
+    logger.info(f"Cleaned answer: {cleaned_answer}")
     
     logger.info("Test completed successfully!")
+    logger.info("Note: LLM-based QA generation requires the model to be loaded and will be tested during actual processing")
 
 if __name__ == "__main__":
     test_qa_generator() 

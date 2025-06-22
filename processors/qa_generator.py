@@ -200,10 +200,9 @@ class QAGenerator:
                 logger.debug("Step 2: Generating answer based on question and context...")
                 answer = self._generate_answer_from_question_context(chunk, question)
             else:
-                # Fallback to simple question generation
-                logger.debug("Using fallback question generation...")
-                question = self._generate_fallback_question(chunk, q_idx)
-                answer = self._generate_fallback_answer(chunk, question)
+                # If model is not available, skip this chunk
+                logger.warning(f"LLM model not available for chunk {chunk_index}, skipping QA generation")
+                continue
             
             qa_pair = {
                 "id": f"chunk_{chunk_index}_question_{q_idx}",
@@ -238,7 +237,7 @@ Comparative (comparing people, events, or ideas)
 
 Causal (asking about reasons or consequences)
 
-Hypothetical (posing ‘what if’ or imagined scenarios)
+Hypothetical (posing 'what if' or imagined scenarios)
 
 Opinion-based (eliciting a personal or character viewpoint)
 
@@ -297,11 +296,11 @@ Question (in Arabic):"""
             
             logger.debug(f"LLM generated question from context: {question[:100]}...")
             
-            return question if question else self._generate_fallback_question(context, question_index)
+            return question
             
         except Exception as e:
             logger.error(f"Error generating question from context with LLM: {e}")
-            return self._generate_fallback_question(context, question_index)
+            return ""
     
     def _generate_answer_from_question_context(self, context: str, question: str) -> str:
         """Generate an answer based on the question and context."""
@@ -311,7 +310,7 @@ Question (in Arabic):"""
             # Create English prompt for answer generation, but request Arabic output
             prompt = f"""Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured.
 
-Text: {context[:800]}...
+Text: {context}
 
 Question: {question}
 
@@ -344,46 +343,11 @@ Answer (in Arabic):"""
             
             logger.debug(f"LLM generated answer from question-context: {answer[:100]}...")
             
-            return answer if answer else self._generate_fallback_answer(context, question)
+            return answer
             
         except Exception as e:
             logger.error(f"Error generating answer from question-context with LLM: {e}")
-            return self._generate_fallback_answer(context, question)
-    
-    def _generate_fallback_question(self, context: str, question_index: int) -> str:
-        """Generate a simple fallback question when LLM is not available."""
-        # Simple fallback: ask about the main topic or concept
-        sentences = context.split('.')
-        if sentences:
-            # Take the first meaningful sentence and create a question
-            first_sentence = sentences[0].strip()
-            if len(first_sentence) > 20:
-                return f"ما هو المحتوى الرئيسي في هذا النص؟"
-            else:
-                return f"ما هي الفكرة الأساسية المطروحة هنا؟"
-        else:
-            return f"ما هو موضوع هذا النص؟"
-    
-    def _generate_fallback_answer(self, context: str, question: str) -> str:
-        """Generate a simple fallback answer when LLM is not available."""
-        # Simple answer generation - can be improved with LLM integration
-        sentences = context.split('.')
-        
-        # Find sentences that might be relevant to the question
-        relevant_sentences = []
-        for sentence in sentences:
-            if len(sentence.strip()) > 20:  # Only meaningful sentences
-                relevant_sentences.append(sentence.strip())
-        
-        if relevant_sentences:
-            # Use the first relevant sentence as answer
-            answer = relevant_sentences[0]
-            if len(answer) > 200:  # Truncate if too long
-                answer = answer[:200] + "..."
-            return answer
-        else:
-            # Fallback: use a portion of the context
-            return context[:200] + "..." if len(context) > 200 else context
+            return ""
     
     def _clean_question(self, question: str) -> str:
         """Clean up generated question."""
