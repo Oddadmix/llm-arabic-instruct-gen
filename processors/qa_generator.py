@@ -72,7 +72,7 @@ class QAGenerator:
         try:
             logger.info("Creating conversation pipeline...")
             self.pipeline = pipeline(
-                "conversational",
+                "text-generation",
                 model=self.llm_model,
                 device=self.device,
                 torch_dtype=torch.float16 if self.device.type == "cuda" else torch.float32
