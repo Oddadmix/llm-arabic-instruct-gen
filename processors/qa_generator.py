@@ -41,8 +41,7 @@ class QAGenerator:
         logger.info(f"  - Offload model: {offload_model}")
         
         # Initialize LLM components
-        self.tokenizer = None
-        self.model = None
+        self.pipeline = None
         self.device = self._get_device()
         self.model_loaded = False
         
@@ -64,39 +63,29 @@ class QAGenerator:
         return device
     
     def _load_llm(self):
-        """Load the LLM model and tokenizer."""
+        """Load the LLM model and create pipeline."""
         if self.model_loaded:
             logger.debug("Model already loaded")
             return
             
         logger.info(f"Loading LLM model: {self.llm_model}")
         try:
-            logger.info("Loading tokenizer...")
-            self.tokenizer = AutoTokenizer.from_pretrained(self.llm_model)
-            logger.info("Tokenizer loaded successfully")
-            
-            logger.info("Loading model...")
-            self.model = AutoModelForCausalLM.from_pretrained(self.llm_model)
-            logger.info("Model loaded successfully")
-            
-            logger.info(f"Moving model to device: {self.device}")
-            self.model.to(self.device)
-            self.model.eval()
-            logger.info("Model moved to device and set to evaluation mode")
-            
-            # Set pad token if not present
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-                logger.info("Set pad_token to eos_token")
+            logger.info("Creating text generation pipeline...")
+            self.pipeline = pipeline(
+                "text-generation",
+                model=self.llm_model,
+                device=self.device,
+                torch_dtype=torch.float16 if self.device.type == "cuda" else torch.float32
+            )
+            logger.info("Pipeline created successfully")
             
             self.model_loaded = True
             logger.info(f"LLM model loaded successfully: {self.llm_model}")
             
         except Exception as e:
             logger.error(f"Failed to load LLM model: {e}")
-            logger.warning("Falling back to template-based question generation")
-            self.tokenizer = None
-            self.model = None
+            logger.warning("LLM model not available for QA generation")
+            self.pipeline = None
             self.model_loaded = False
     
     def _unload_llm(self):
@@ -106,18 +95,10 @@ class QAGenerator:
             
         logger.info("Unloading LLM model to free memory...")
         
-        if self.model is not None:
-            # Move model to CPU first to free GPU memory
-            if hasattr(self.model, 'cpu'):
-                self.model.cpu()
-            
-            # Delete model
-            del self.model
-            self.model = None
-            
-        if self.tokenizer is not None:
-            del self.tokenizer
-            self.tokenizer = None
+        if self.pipeline is not None:
+            # Delete pipeline
+            del self.pipeline
+            self.pipeline = None
             
         self.model_loaded = False
         
@@ -191,7 +172,7 @@ class QAGenerator:
         for q_idx in range(self.num_questions_per_chunk):
             logger.debug(f"Generating question {q_idx + 1}/{self.num_questions_per_chunk}")
             
-            if self.model is not None and self.model_loaded:
+            if self.pipeline is not None and self.model_loaded:
                 # Step 1: Generate question based on context
                 logger.debug("Step 1: Generating question based on context...")
                 question = self._generate_question_from_context(chunk, q_idx)
@@ -269,30 +250,22 @@ Text: {context}
 
 Question (in Arabic):"""
             
-            # Tokenize input
-            inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
-            inputs = inputs.to(self.device)
-            logger.debug(f"Tokenized input: {inputs.shape[1]} tokens")
-            
-            # Generate response
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs,
-                    max_length=2048,
-                    temperature=self.temperature,
-                    top_p=self.top_p,
-                    do_sample=self.do_sample,
-                    pad_token_id=self.tokenizer.eos_token_id
-                )
-            
-            # Decode response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Generate response using pipeline
+            outputs = self.pipeline(
+                prompt,
+                max_new_tokens=100,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                do_sample=self.do_sample,
+                pad_token_id=self.pipeline.tokenizer.eos_token_id,
+                return_full_text=False
+            )
             
             # Extract the generated question
-            question = response[len(prompt):].strip()
+            question = outputs[0]['generated_text'].strip()
             
             # Clean up the question
-            # question = self._clean_question(question)
+            question = self._clean_question(question)
             
             logger.debug(f"LLM generated question from context: {question[:100]}...")
             
@@ -316,30 +289,22 @@ Question: {question}
 
 Answer (in Arabic):"""
             
-            # Tokenize input
-            inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=self.max_length)
-            inputs = inputs.to(self.device)
-            logger.debug(f"Tokenized input: {inputs.shape[1]} tokens")
-            
-            # Generate response
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs,
-                    max_length=2048,
-                    temperature=self.temperature,
-                    top_p=self.top_p,
-                    do_sample=self.do_sample,
-                    pad_token_id=self.tokenizer.eos_token_id
-                )
-            
-            # Decode response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Generate response using pipeline
+            outputs = self.pipeline(
+                prompt,
+                max_new_tokens=200,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                do_sample=self.do_sample,
+                pad_token_id=self.pipeline.tokenizer.eos_token_id,
+                return_full_text=False
+            )
             
             # Extract the generated answer
-            answer = response[len(prompt):].strip()
+            answer = outputs[0]['generated_text'].strip()
             
             # Clean up the answer
-            # answer = self._clean_answer(answer)
+            answer = self._clean_answer(answer)
             
             logger.debug(f"LLM generated answer from question-context: {answer[:100]}...")
             
