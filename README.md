@@ -1,11 +1,14 @@
 # LLM Dataset Instruction Generator
 
-A comprehensive tool for generating instruction datasets from PDF and TXT documents using Large Language Models (LLMs). This tool extracts text from PDFs and TXT files, chunks it into manageable pieces, generates question-answer pairs using LLMs, and creates embeddings for similarity search.
+A comprehensive tool for generating instruction datasets from PDF and TXT documents, or Hugging Face datasets using Large Language Models (LLMs). This tool extracts text from PDFs, TXT files, or pre-chunked datasets, generates question-answer pairs using LLMs, and creates embeddings for similarity search.
 
 ## Features
 
 - **Multi-Format Document Support**: Extract text from PDF documents and TXT files
-- **Intelligent Text Chunking**: Split text into optimal chunks with configurable overlap
+- **Hugging Face Dataset Support**: Process pre-chunked text from Hugging Face datasets
+- **Local Dataset File Support**: Process CSV, JSON, JSONL, and Parquet files
+- **Intelligent Text Chunking**: Split text into optimal chunks with configurable overlap (for files)
+- **Pre-chunked Data Processing**: Use datasets with pre-chunked text data
 - **Two-Step LLM-Powered QA Generation**: Generate high-quality question-answer pairs using a two-step process:
   1. **Question Generation**: Generate context-aware questions using English prompts with Arabic output
   2. **Answer Generation**: Generate comprehensive answers based on the question and context
@@ -36,7 +39,7 @@ pip install -e .
 
 ## Quick Start
 
-### Basic Usage
+### Processing PDF/TXT Files
 
 Process a PDF file with default settings:
 
@@ -56,6 +59,54 @@ Process only the first page for testing (PDF only):
 python cli.py --file books/sample.pdf --max-pages 1
 ```
 
+### Processing Hugging Face Datasets
+
+Process a Hugging Face dataset with default settings:
+
+```bash
+python cli.py --dataset "squad" --text-column "context"
+```
+
+Process a dataset with specific configuration:
+
+```bash
+python cli.py --dataset "wikitext" --dataset-config "wikitext-103-raw-v1" --text-column "text"
+```
+
+Process only a subset of samples:
+
+```bash
+python cli.py --dataset "arabic-news" --max-samples 1000 --text-column "content"
+```
+
+### Processing Local Dataset Files
+
+Process a CSV file:
+
+```bash
+python cli.py --dataset-file data.csv --text-column "text"
+```
+
+Process a JSONL file:
+
+```bash
+python cli.py --dataset-file data.jsonl --file-type json --text-column "content"
+```
+
+Process a Parquet file:
+
+```bash
+python cli.py --dataset-file data.parquet --file-type parquet --text-column "text"
+```
+
+### Getting Dataset Information
+
+Get information about a Hugging Face dataset without processing:
+
+```bash
+python cli.py --dataset-info "squad"
+```
+
 ### Advanced Usage
 
 Process with custom parameters:
@@ -67,6 +118,16 @@ python cli.py --file books/sample.pdf \
     --llm-model "Qwen/Qwen2.5-7B-Instruct" \
     --embedding-model "Qwen/Qwen2-0.5B-Instruct" \
     --output-dir my_output
+```
+
+Process dataset with custom parameters:
+
+```bash
+python cli.py --dataset "squad" \
+    --text-column "context" \
+    --questions-per-chunk 3 \
+    --llm-model "Qwen/Qwen2.5-7B-Instruct" \
+    --max-samples 500
 ```
 
 Process TXT file with custom parameters:
@@ -101,13 +162,13 @@ Process only the first few pages of a large PDF:
 
 ```bash
 # Process only the first 10 pages
-python cli.py --pdf-file books/large_document.pdf --max-pages 10
+python cli.py --file books/large_document.pdf --max-pages 10
 
 # Process only the first 5 pages with custom chunk size
-python cli.py --pdf-file books/large_document.pdf --max-pages 5 --chunk-size 500
+python cli.py --file books/large_document.pdf --max-pages 5 --chunk-size 500
 
 # Process only first 3 pages for quick testing with smaller models
-python cli.py --pdf-file books/large_document.pdf --max-pages 3 --llm-model "Qwen/Qwen2.5-7B-Instruct"
+python cli.py --file books/large_document.pdf --max-pages 3 --llm-model "Qwen/Qwen2.5-7B-Instruct"
 ```
 
 ### Export Control
@@ -182,51 +243,37 @@ Create a custom configuration file and use it:
 ```bash
 python cli.py --file books/sample.pdf --config my_config.json
 python cli.py --file books/sample.txt --config my_config.json
+python cli.py --dataset "squad" --config my_config.json
 ```
 
 ## Command Line Options
 
+### Input Source Options (Mutually Exclusive)
+
+- `--file`: Path to the PDF or TXT file to process
+- `--dataset`: Hugging Face dataset name to process (e.g., 'squad', 'wikitext')
+- `--dataset-file`: Path to local dataset file (CSV, JSON, JSONL, Parquet)
+- `--dataset-info`: Get information about a Hugging Face dataset without processing
+
+### Dataset-Specific Options
+
+- `--dataset-config`: Dataset configuration name (for datasets with multiple configs)
+- `--dataset-split`: Dataset split to use (default: train)
+- `--text-column`: Column name containing text data (default: text)
+- `--file-type`: File type for local dataset files (auto, csv, json, jsonl, parquet)
+- `--max-samples`: Maximum number of samples to process from dataset
+
 ### Main Options
 
-- `--file`: Path to the PDF or TXT file to process (required)
 - `--config`: Path to configuration file (default: config/default_config.json)
 - `--output-dir`: Output directory for generated files (default: output)
 - `--output-format`: Output format (json, csv, all) (default: all)
 
-### Document Processing Options
+### Document Processing Options (for files only)
 
 - `--chunk-size`: Size of text chunks (overrides config)
 - `--chunk-overlap`: Overlap between text chunks (overrides config)
 - `--max-pages`: Maximum number of pages to process (for PDFs only, overrides config)
-
-**Note**: When `--max-pages` is not specified, all pages in the PDF will be processed. Use this option to limit processing for large documents or for testing purposes. This option only applies to PDF files.
-
-### QA Generation Options
-
-- `--questions-per-chunk`: Number of questions to generate per chunk (overrides config)
-- `--llm-model`: LLM model for question generation (overrides config)
-- `--model-type`: Model type: auto (auto-detect), instruction (instruction-based), or completion (prompt-based) (overrides config)
-- `--temperature`: Temperature for LLM generation (overrides config)
-- `--top-p`: Top-p for LLM generation (overrides config)
-- `--max-length`: Maximum length for LLM generation (overrides config)
-
-### Embedding Options
-
-- `--embedding-model`: Embedding model for text embeddings (overrides config)
-- `--device`: Device to use for models (cpu, cuda, mps, auto) (overrides config)
-
-### Memory Management Options
-
-- `--no-offload`: Disable model offloading to save memory (models will stay loaded)
-
-### Export Options
-
-- `--no-save-individual`: Disable saving individual chunk and QA pair files
-
-### Logging Options
-
-- `--log-level`: Logging level (DEBUG, INFO, WARNING, ERROR) (default: INFO)
-- `--log-file`: Log file path (optional)
 
 ## Output Structure
 

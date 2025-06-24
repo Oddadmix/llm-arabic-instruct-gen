@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from config import Settings
-from processors import DocumentProcessor, TextChunker, QAGenerator
+from processors import DocumentProcessor, TextChunker, QAGenerator, DatasetProcessor
 from utils import DataExporter, setup_colored_logging, EmbeddingGenerator
 import logging
 
@@ -29,11 +29,17 @@ def main():
         # Load configuration
         settings = Settings(args.config)
         
-        # Process PDF
+        # Process based on input type
         if args.file:
-            process_pdf(args.file, settings, args)
+            process_file(args.file, settings, args)
+        elif args.dataset:
+            process_dataset(args.dataset, settings, args)
+        elif args.dataset_file:
+            process_dataset_file(args.dataset_file, settings, args)
+        elif args.dataset_info:
+            show_dataset_info(args.dataset_info, args)
         else:
-            logger.error("No file specified. Use --file option.")
+            logger.error("No input specified. Use --file, --dataset, --dataset-file, or --dataset-info option.")
             sys.exit(1)
             
     except Exception as e:
@@ -44,25 +50,94 @@ def main():
 def create_parser() -> argparse.ArgumentParser:
     """Create command-line argument parser."""
     parser = argparse.ArgumentParser(
-        description="LLM Dataset Instruction Generator - Generate instruction datasets from PDF and TXT documents",
+        description="LLM Dataset Instruction Generator - Generate instruction datasets from PDF, TXT documents, or Hugging Face datasets",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Process PDF/TXT files
   python cli.py --file document.pdf
   python cli.py --file document.txt
   python cli.py --file document.pdf --output-format json
-  python cli.py --file document.txt --chunk-size 500 --questions-per-chunk 5
-  python cli.py --file document.pdf --llm-model Qwen/Qwen2.5-32B-Instruct --embedding-model Qwen/Qwen2-0.5B-Instruct
+  
+  # Process Hugging Face datasets
+  python cli.py --dataset "squad" --text-column "context"
+  python cli.py --dataset "wikitext" --dataset-config "wikitext-103-raw-v1"
+  python cli.py --dataset "arabic-news" --max-samples 1000
+  
+  # Process local dataset files
+  python cli.py --dataset-file data.csv --text-column "text"
+  python cli.py --dataset-file data.jsonl --file-type json
+  
+  # Get dataset information
+  python cli.py --dataset-info "squad"
+  
+  # General options
+  python cli.py --file document.pdf --chunk-size 500 --questions-per-chunk 5
+  python cli.py --dataset "squad" --llm-model Qwen/Qwen2.5-32B-Instruct --embedding-model Qwen/Qwen2-0.5B-Instruct
   python cli.py --file document.txt --max-pages 10  # Process only first 10 pages (for PDFs)
   python cli.py --file document.pdf --no-offload  # Disable model offloading to save memory
         """
     )
     
-    # Required arguments
-    parser.add_argument(
+    # Input source arguments (mutually exclusive)
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument(
         "--file",
         type=str,
         help="Path to the PDF or TXT file to process"
+    )
+    
+    input_group.add_argument(
+        "--dataset",
+        type=str,
+        help="Hugging Face dataset name to process (e.g., 'squad', 'wikitext')"
+    )
+    
+    input_group.add_argument(
+        "--dataset-file",
+        type=str,
+        help="Path to local dataset file (CSV, JSON, JSONL, Parquet)"
+    )
+    
+    input_group.add_argument(
+        "--dataset-info",
+        type=str,
+        help="Get information about a Hugging Face dataset without processing"
+    )
+    
+    # Dataset-specific arguments
+    parser.add_argument(
+        "--dataset-config",
+        type=str,
+        help="Dataset configuration name (for datasets with multiple configs)"
+    )
+    
+    parser.add_argument(
+        "--dataset-split",
+        type=str,
+        default="train",
+        help="Dataset split to use (default: train)"
+    )
+    
+    parser.add_argument(
+        "--text-column",
+        type=str,
+        default="text",
+        help="Column name containing text data (default: text)"
+    )
+    
+    parser.add_argument(
+        "--file-type",
+        type=str,
+        choices=["auto", "csv", "json", "jsonl", "parquet"],
+        default="auto",
+        help="File type for local dataset files (default: auto-detect)"
+    )
+    
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        help="Maximum number of samples to process from dataset"
     )
     
     # Optional arguments
@@ -92,13 +167,13 @@ Examples:
     parser.add_argument(
         "--chunk-size",
         type=int,
-        help="Size of text chunks (overrides config)"
+        help="Size of text chunks (overrides config, only used for file processing)"
     )
     
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        help="Overlap between text chunks (overrides config)"
+        help="Overlap between text chunks (overrides config, only used for file processing)"
     )
     
     parser.add_argument(
@@ -191,141 +266,373 @@ Examples:
     return parser
 
 
-def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
+def process_file(file_path: str, settings: Settings, args: argparse.Namespace):
     """Process PDF or TXT file and generate instruction dataset."""
     logger = logging.getLogger(__name__)
     
     # Validate file
-    file_path = Path(pdf_file)
-    if not file_path.exists():
-        logger.error(f"File not found: {pdf_file}")
-        return
+    file_path_obj = Path(file_path)
+    if not file_path_obj.exists():
+        logger.error(f"File not found: {file_path}")
+        sys.exit(1)
     
-    # Check file type
-    file_extension = file_path.suffix.lower()
-    if file_extension not in ['.pdf', '.txt']:
-        logger.error(f"Unsupported file type: {file_extension}. Supported types: .pdf, .txt")
-        return
+    logger.info(f"Processing file: {file_path}")
     
-    logger.info(f"Processing {file_extension.upper()} file: {pdf_file}")
+    # Override settings with CLI arguments
+    if args.chunk_size:
+        settings.chunk_size = args.chunk_size
+    if args.chunk_overlap:
+        settings.chunk_overlap = args.chunk_overlap
+    if args.max_pages:
+        settings.max_pages = args.max_pages
+    if args.questions_per_chunk:
+        settings.questions_per_chunk = args.questions_per_chunk
+    if args.llm_model:
+        settings.llm_model = args.llm_model
+    if args.temperature:
+        settings.temperature = args.temperature
+    if args.top_p:
+        settings.top_p = args.top_p
+    if args.max_length:
+        settings.max_length = args.max_length
+    if args.embedding_model:
+        settings.embedding_model = args.embedding_model
+    if args.device:
+        settings.device = args.device
+    if args.no_offload:
+        settings.offload_model = False
     
-    # Determine model offloading setting
-    offload_models = not args.no_offload
-    logger.info(f"Model offloading: {'enabled' if offload_models else 'disabled'}")
-    
-    # Initialize processors with settings
-    document_processor = DocumentProcessor(
-        max_pages=args.max_pages or settings.get("pdf_processor.max_pages")
-    )
-    
+    # Initialize processors
+    doc_processor = DocumentProcessor(max_pages=settings.max_pages)
     chunker = TextChunker(
-        chunk_size=args.chunk_size or settings.get("pdf_processor.chunk_size"),
-        chunk_overlap=args.chunk_overlap or settings.get("pdf_processor.chunk_overlap")
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap
     )
-    
-    # QA Generator with LLM configuration
     qa_generator = QAGenerator(
-        num_questions_per_chunk=args.questions_per_chunk or settings.get("qa_generator.num_questions_per_chunk"),
-        llm_model=args.llm_model or settings.get("qa_generator.llm_model"),
-        max_length=args.max_length or settings.get("qa_generator.max_length"),
-        temperature=args.temperature or settings.get("qa_generator.temperature"),
-        top_p=args.top_p or settings.get("qa_generator.top_p"),
-        do_sample=settings.get("qa_generator.do_sample"),
-        offload_model=offload_models
+        num_questions_per_chunk=settings.questions_per_chunk,
+        llm_model=settings.llm_model,
+        max_length=settings.max_length,
+        temperature=settings.temperature,
+        top_p=settings.top_p,
+        do_sample=settings.do_sample,
+        offload_model=settings.offload_model
     )
-    
-    # Embedding generator with model override
-    embedding_model = args.embedding_model or settings.get("embeddings.model")
-    embedding_device = args.device or settings.get("embeddings.device")
-    embedding_batch_size = settings.get("embeddings.batch_size")
     embedding_generator = EmbeddingGenerator(
-        model_name=embedding_model,
-        batch_size=embedding_batch_size,
-        device=embedding_device,
-        offload_model=offload_models
+        model_name=settings.embedding_model,
+        device=settings.device,
+        offload_model=settings.offload_model
     )
-    
     exporter = DataExporter(output_dir=args.output_dir)
     
-    # Extract text from file
-    logger.info(f"Extracting text from {file_extension.upper()} file...")
-    text = document_processor.extract_text(pdf_file)
+    try:
+        # Extract text from file
+        logger.info("Step 1: Extracting text from file...")
+        text = doc_processor.extract_text(file_path)
+        logger.info(f"Text extraction completed. Total characters: {len(text)}")
+        
+        # Chunk the text
+        logger.info("Step 2: Chunking text...")
+        text_chunks = chunker.chunk_text(text)
+        logger.info(f"Text chunking completed. Total chunks: {len(text_chunks)}")
+        
+        # Generate QA pairs
+        logger.info("Step 3: Generating QA pairs...")
+        
+        # Define save callback for incremental saving
+        def save_incrementally(chunk, chunk_qa_pairs, chunk_index):
+            if not args.no_save_individual:
+                # Save chunk as separate file
+                chunk_filename = f"chunk_{chunk_index:04d}.txt"
+                exporter.save_chunk(chunk, chunk_filename)
+                
+                # Save QA pairs as separate files
+                for qa_idx, qa_pair in enumerate(chunk_qa_pairs):
+                    qa_filename = f"chunk_{chunk_index:04d}_qa_{qa_idx:02d}.json"
+                    exporter.save_qa_pair(qa_pair, qa_filename)
+        
+        qa_pairs = qa_generator.generate_qa_pairs(text_chunks, save_callback=save_incrementally)
+        logger.info(f"QA generation completed. Total QA pairs: {len(qa_pairs)}")
+        
+        # Generate embeddings
+        logger.info("Step 4: Generating embeddings...")
+        embeddings = embedding_generator.generate_embeddings(text_chunks)
+        logger.info(f"Embedding generation completed. Total embeddings: {len(embeddings)}")
+        
+        # Convert to instruction format
+        logger.info("Step 5: Converting to instruction format...")
+        instructions = qa_generator.generate_instruction_format(qa_pairs)
+        logger.info(f"Instruction format conversion completed. Total instructions: {len(instructions)}")
+        
+        # Export results
+        logger.info("Step 6: Exporting results...")
+        exporter.export_dataset(instructions, embeddings, args.output_format)
+        logger.info(f"Export completed. Results saved to: {args.output_dir}")
+        
+        # Print summary
+        print_summary(len(text_chunks), len(qa_pairs), len(embeddings), args.output_dir)
+        
+    except Exception as e:
+        logger.error(f"Error processing file: {e}")
+        raise
+
+
+def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namespace):
+    """Process Hugging Face dataset and generate instruction dataset."""
+    logger = logging.getLogger(__name__)
     
-    if not text.strip():
-        logger.warning(f"No text extracted from {file_extension.upper()} file")
-        return
+    logger.info(f"Processing Hugging Face dataset: {dataset_name}")
     
-    # Chunk the text
-    logger.info("Chunking text...")
-    chunks = chunker.chunk_text(text)
+    # Override settings with CLI arguments
+    if args.questions_per_chunk:
+        settings.questions_per_chunk = args.questions_per_chunk
+    if args.llm_model:
+        settings.llm_model = args.llm_model
+    if args.temperature:
+        settings.temperature = args.temperature
+    if args.top_p:
+        settings.top_p = args.top_p
+    if args.max_length:
+        settings.max_length = args.max_length
+    if args.embedding_model:
+        settings.embedding_model = args.embedding_model
+    if args.device:
+        settings.device = args.device
+    if args.no_offload:
+        settings.offload_model = False
     
-    if not chunks:
-        logger.warning("No chunks created from text")
-        return
+    # Initialize processors
+    dataset_processor = DatasetProcessor(
+        text_column=args.text_column,
+        max_samples=args.max_samples
+    )
+    qa_generator = QAGenerator(
+        num_questions_per_chunk=settings.questions_per_chunk,
+        llm_model=settings.llm_model,
+        max_length=settings.max_length,
+        temperature=settings.temperature,
+        top_p=settings.top_p,
+        do_sample=settings.do_sample,
+        offload_model=settings.offload_model
+    )
+    embedding_generator = EmbeddingGenerator(
+        model_name=settings.embedding_model,
+        device=settings.device,
+        offload_model=settings.offload_model
+    )
+    exporter = DataExporter(output_dir=args.output_dir)
     
-    logger.info(f"Created {len(chunks)} text chunks")
+    try:
+        # Load dataset and extract text chunks
+        logger.info("Step 1: Loading dataset and extracting text chunks...")
+        text_chunks = dataset_processor.load_dataset(
+            dataset_name=dataset_name,
+            split=args.dataset_split,
+            config_name=args.dataset_config
+        )
+        logger.info(f"Dataset loading completed. Total chunks: {len(text_chunks)}")
+        
+        # Generate QA pairs
+        logger.info("Step 2: Generating QA pairs...")
+        
+        # Define save callback for incremental saving
+        def save_incrementally(chunk, chunk_qa_pairs, chunk_index):
+            if not args.no_save_individual:
+                # Save chunk as separate file
+                chunk_filename = f"dataset_chunk_{chunk_index:04d}.txt"
+                exporter.save_chunk(chunk, chunk_filename)
+                
+                # Save QA pairs as separate files
+                for qa_idx, qa_pair in enumerate(chunk_qa_pairs):
+                    qa_filename = f"dataset_chunk_{chunk_index:04d}_qa_{qa_idx:02d}.json"
+                    exporter.save_qa_pair(qa_pair, qa_filename)
+        
+        qa_pairs = qa_generator.generate_qa_pairs(text_chunks, save_callback=save_incrementally)
+        logger.info(f"QA generation completed. Total QA pairs: {len(qa_pairs)}")
+        
+        # Generate embeddings
+        logger.info("Step 3: Generating embeddings...")
+        embeddings = embedding_generator.generate_embeddings(text_chunks)
+        logger.info(f"Embedding generation completed. Total embeddings: {len(embeddings)}")
+        
+        # Convert to instruction format
+        logger.info("Step 4: Converting to instruction format...")
+        instructions = qa_generator.generate_instruction_format(qa_pairs)
+        logger.info(f"Instruction format conversion completed. Total instructions: {len(instructions)}")
+        
+        # Export results
+        logger.info("Step 5: Exporting results...")
+        exporter.export_dataset(instructions, embeddings, args.output_format)
+        logger.info(f"Export completed. Results saved to: {args.output_dir}")
+        
+        # Print summary
+        print_summary(len(text_chunks), len(qa_pairs), len(embeddings), args.output_dir)
+        
+    except Exception as e:
+        logger.error(f"Error processing dataset: {e}")
+        raise
+
+
+def process_dataset_file(file_path: str, settings: Settings, args: argparse.Namespace):
+    """Process local dataset file and generate instruction dataset."""
+    logger = logging.getLogger(__name__)
     
-    # Generate embeddings
-    logger.info("Generating embeddings...")
-    embeddings = embedding_generator.generate_embeddings(chunks)
+    # Validate file
+    file_path_obj = Path(file_path)
+    if not file_path_obj.exists():
+        logger.error(f"File not found: {file_path}")
+        sys.exit(1)
     
-    # Export dataset
-    logger.info("Exporting dataset...")
-    base_filename = file_path.stem
+    logger.info(f"Processing local dataset file: {file_path}")
     
-    # Determine export settings - by default, save individual files unless --no-save-individual is used
-    save_individual_files = not args.no_save_individual
+    # Override settings with CLI arguments
+    if args.questions_per_chunk:
+        settings.questions_per_chunk = args.questions_per_chunk
+    if args.llm_model:
+        settings.llm_model = args.llm_model
+    if args.temperature:
+        settings.temperature = args.temperature
+    if args.top_p:
+        settings.top_p = args.top_p
+    if args.max_length:
+        settings.max_length = args.max_length
+    if args.embedding_model:
+        settings.embedding_model = args.embedding_model
+    if args.device:
+        settings.device = args.device
+    if args.no_offload:
+        settings.offload_model = False
     
-    # Generate QA pairs
-    logger.info("Generating question-answer pairs...")
+    # Initialize processors
+    dataset_processor = DatasetProcessor(
+        text_column=args.text_column,
+        max_samples=args.max_samples
+    )
+    qa_generator = QAGenerator(
+        num_questions_per_chunk=settings.questions_per_chunk,
+        llm_model=settings.llm_model,
+        max_length=settings.max_length,
+        temperature=settings.temperature,
+        top_p=settings.top_p,
+        do_sample=settings.do_sample,
+        offload_model=settings.offload_model
+    )
+    embedding_generator = EmbeddingGenerator(
+        model_name=settings.embedding_model,
+        device=settings.device,
+        offload_model=settings.offload_model
+    )
+    exporter = DataExporter(output_dir=args.output_dir)
     
-    # Create callback function for incremental saving
-    def save_incrementally(chunk, chunk_qa_pairs, chunk_index):
-        """Callback function to save chunk and QA pairs incrementally."""
-        if save_individual_files:
-            # Save chunk
-            exporter.save_chunk_incrementally(chunk, chunk_index, base_filename)
-            # Save QA pairs for this chunk
-            exporter.save_qa_pairs_incrementally(chunk_qa_pairs, chunk_index, base_filename)
+    try:
+        # Load dataset and extract text chunks
+        logger.info("Step 1: Loading dataset file and extracting text chunks...")
+        text_chunks = dataset_processor.load_dataset_from_file(
+            file_path=file_path,
+            file_type=args.file_type
+        )
+        logger.info(f"Dataset loading completed. Total chunks: {len(text_chunks)}")
+        
+        # Generate QA pairs
+        logger.info("Step 2: Generating QA pairs...")
+        
+        # Define save callback for incremental saving
+        def save_incrementally(chunk, chunk_qa_pairs, chunk_index):
+            if not args.no_save_individual:
+                # Save chunk as separate file
+                chunk_filename = f"file_chunk_{chunk_index:04d}.txt"
+                exporter.save_chunk(chunk, chunk_filename)
+                
+                # Save QA pairs as separate files
+                for qa_idx, qa_pair in enumerate(chunk_qa_pairs):
+                    qa_filename = f"file_chunk_{chunk_index:04d}_qa_{qa_idx:02d}.json"
+                    exporter.save_qa_pair(qa_pair, qa_filename)
+        
+        qa_pairs = qa_generator.generate_qa_pairs(text_chunks, save_callback=save_incrementally)
+        logger.info(f"QA generation completed. Total QA pairs: {len(qa_pairs)}")
+        
+        # Generate embeddings
+        logger.info("Step 3: Generating embeddings...")
+        embeddings = embedding_generator.generate_embeddings(text_chunks)
+        logger.info(f"Embedding generation completed. Total embeddings: {len(embeddings)}")
+        
+        # Convert to instruction format
+        logger.info("Step 4: Converting to instruction format...")
+        instructions = qa_generator.generate_instruction_format(qa_pairs)
+        logger.info(f"Instruction format conversion completed. Total instructions: {len(instructions)}")
+        
+        # Export results
+        logger.info("Step 5: Exporting results...")
+        exporter.export_dataset(instructions, embeddings, args.output_format)
+        logger.info(f"Export completed. Results saved to: {args.output_dir}")
+        
+        # Print summary
+        print_summary(len(text_chunks), len(qa_pairs), len(embeddings), args.output_dir)
+        
+    except Exception as e:
+        logger.error(f"Error processing dataset file: {e}")
+        raise
+
+
+def show_dataset_info(dataset_name: str, args: argparse.Namespace):
+    """Show information about a Hugging Face dataset."""
+    logger = logging.getLogger(__name__)
     
-    qa_pairs = qa_generator.generate_qa_pairs(chunks, save_callback=save_incrementally if save_individual_files else None)
+    logger.info(f"Getting information for dataset: {dataset_name}")
     
-    if not qa_pairs:
-        logger.warning("No QA pairs generated")
-        return
+    # Initialize dataset processor
+    dataset_processor = DatasetProcessor(
+        text_column=args.text_column,
+        max_samples=args.max_samples
+    )
     
-    logger.info(f"Generated {len(qa_pairs)} QA pairs")
-    
-    # Note: Individual files are already saved incrementally, so we only need to export the combined formats
-    if args.output_format == "all":
-        exported_files = exporter.export_multiple_formats(qa_pairs, base_filename)
-        logger.info(f"Exported dataset in multiple formats:")
-        for format_name, filepath in exported_files.items():
-            logger.info(f"  {format_name}: {filepath}")
-    else:
-        if args.output_format == "json":
-            filepath = exporter.export_json(qa_pairs, base_filename)
-        elif args.output_format == "csv":
-            filepath = exporter.export_csv(qa_pairs, base_filename)
-        logger.info(f"Exported dataset to: {filepath}")
-    
-    # Create and export metadata
-    metadata = exporter.create_metadata(qa_pairs, pdf_file)
-    metadata_file = exporter.export_json([metadata], f"{base_filename}_metadata")
-    logger.info(f"Exported metadata to: {metadata_file}")
-    
-    # Summary of saved files
-    if save_individual_files:
-        chunks_dir = exporter.output_dir / f"{base_filename}_chunks"
-        qa_pairs_dir = exporter.output_dir / f"{base_filename}_qa_pairs"
-        logger.info("=== INCREMENTAL SAVING SUMMARY ===")
-        logger.info(f"Individual chunks saved to: {chunks_dir}")
-        logger.info(f"Individual QA pairs saved to: {qa_pairs_dir}")
-        logger.info(f"Total chunks processed: {len(chunks)}")
-        logger.info(f"Total QA pairs generated: {len(qa_pairs)}")
-        logger.info("Files were saved incrementally during processing")
-    
-    logger.info("Processing completed successfully!")
+    try:
+        # Get dataset info
+        info = dataset_processor.get_dataset_info(
+            dataset_name=dataset_name,
+            split=args.dataset_split,
+            config_name=args.dataset_config
+        )
+        
+        # Print dataset information
+        print("\n" + "="*60)
+        print(f"DATASET INFORMATION: {info['name']}")
+        print("="*60)
+        print(f"Split: {info['split']}")
+        if info['config']:
+            print(f"Config: {info['config']}")
+        print(f"Total samples: {info['total_samples']:,}")
+        print(f"Columns: {', '.join(info['columns'])}")
+        print(f"Text column '{args.text_column}' exists: {info['text_column_exists']}")
+        
+        if 'sample_data' in info:
+            print(f"\nSample data:")
+            for key, value in info['sample_data'].items():
+                print(f"  {key}: {value}")
+        
+        print("="*60)
+        
+    except Exception as e:
+        logger.error(f"Error getting dataset info: {e}")
+        raise
+
+
+def print_summary(num_chunks: int, num_qa_pairs: int, num_embeddings: int, output_dir: str):
+    """Print processing summary."""
+    print("\n" + "="*60)
+    print("PROCESSING SUMMARY")
+    print("="*60)
+    print(f"Text chunks processed: {num_chunks:,}")
+    print(f"QA pairs generated: {num_qa_pairs:,}")
+    print(f"Embeddings generated: {num_embeddings:,}")
+    print(f"Average QA pairs per chunk: {num_qa_pairs / num_chunks:.1f}")
+    print(f"Output directory: {output_dir}")
+    print("="*60)
+
+
+# Keep the old function name for backward compatibility
+def process_pdf(pdf_file: str, settings: Settings, args: argparse.Namespace):
+    """Alias for process_file for backward compatibility."""
+    return process_file(pdf_file, settings, args)
 
 
 if __name__ == "__main__":
