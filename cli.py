@@ -109,7 +109,8 @@ Examples:
     parser.add_argument(
         "--dataset-config",
         type=str,
-        help="Dataset configuration name (for datasets with multiple configs)"
+        default=None,
+        help="Dataset configuration name (for datasets with multiple configs) (default: None)"
     )
     
     parser.add_argument(
@@ -137,7 +138,8 @@ Examples:
     parser.add_argument(
         "--max-samples",
         type=int,
-        help="Maximum number of samples to process from dataset"
+        default=None,
+        help="Maximum number of samples to process from dataset (default: None - process all)"
     )
     
     # Optional arguments
@@ -167,79 +169,105 @@ Examples:
     parser.add_argument(
         "--chunk-size",
         type=int,
-        help="Size of text chunks (overrides config, only used for file processing)"
+        default=None,
+        help="Size of text chunks (default: None - use config value)"
     )
     
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        help="Overlap between text chunks (overrides config, only used for file processing)"
+        default=None,
+        help="Overlap between text chunks (default: None - use config value)"
     )
     
     parser.add_argument(
         "--max-pages",
         type=int,
-        help="Maximum number of pages to process (for PDFs only, overrides config)"
+        default=None,
+        help="Maximum number of pages to process (for PDFs only) (default: None - use config value)"
     )
     
     # QA generation options
     parser.add_argument(
         "--questions-per-chunk",
         type=int,
-        help="Number of questions to generate per chunk (overrides config)"
+        default=None,
+        help="Number of questions to generate per chunk (default: None - use config value)"
     )
     
     # LLM options
     parser.add_argument(
         "--llm-model",
         type=str,
-        help="LLM model to use for question generation (overrides config)"
+        default=None,
+        help="LLM model to use for question generation (default: None - use config value)"
     )
     
     parser.add_argument(
         "--temperature",
         type=float,
-        help="Temperature for LLM generation (overrides config)"
+        default=None,
+        help="Temperature for LLM generation (default: None - use config value)"
     )
     
     parser.add_argument(
         "--top-p",
         type=float,
-        help="Top-p for LLM generation (overrides config)"
+        default=None,
+        help="Top-p for LLM generation (default: None - use config value)"
     )
     
     parser.add_argument(
         "--max-length",
         type=int,
-        help="Maximum length for LLM generation (overrides config)"
+        default=None,
+        help="Maximum length for LLM generation (default: None - use config value)"
+    )
+    
+    parser.add_argument(
+        "--do-sample",
+        action="store_true",
+        default=None,
+        help="Enable sampling for LLM generation (default: None - use config value)"
     )
     
     # Embedding options
     parser.add_argument(
         "--embedding-model",
         type=str,
-        help="Embedding model to use for text embeddings (overrides config)"
+        default=None,
+        help="Embedding model to use for text embeddings (default: None - use config value)"
     )
     
     parser.add_argument(
         "--device",
         type=str,
         choices=["cpu", "cuda", "mps", "auto"],
-        help="Device to use for models (overrides config)"
+        default=None,
+        help="Device to use for models (default: None - use config value)"
+    )
+    
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Batch size for embedding generation (default: None - use config value)"
     )
     
     # Memory management options
     parser.add_argument(
         "--no-offload",
         action="store_true",
-        help="Disable model offloading to save memory (models will stay loaded)"
+        default=None,
+        help="Disable model offloading to save memory (models will stay loaded) (default: None - use config value)"
     )
     
     # Export options
     parser.add_argument(
         "--no-save-individual",
         action="store_true",
-        help="Disable saving individual chunk and QA pair files"
+        default=False,
+        help="Disable saving individual chunk and QA pair files (default: False)"
     )
     
     # Logging options
@@ -254,7 +282,8 @@ Examples:
     parser.add_argument(
         "--log-file",
         type=str,
-        help="Log file path (optional)"
+        default=None,
+        help="Log file path (default: None - log to console only)"
     )
     
     parser.add_argument(
@@ -278,49 +307,56 @@ def process_file(file_path: str, settings: Settings, args: argparse.Namespace):
     
     logger.info(f"Processing file: {file_path}")
     
-    # Override settings with CLI arguments
-    if args.chunk_size:
-        settings.chunk_size = args.chunk_size
-    if args.chunk_overlap:
-        settings.chunk_overlap = args.chunk_overlap
-    if args.max_pages:
-        settings.max_pages = args.max_pages
-    if args.questions_per_chunk:
-        settings.questions_per_chunk = args.questions_per_chunk
-    if args.llm_model:
-        settings.llm_model = args.llm_model
-    if args.temperature:
-        settings.temperature = args.temperature
-    if args.top_p:
-        settings.top_p = args.top_p
-    if args.max_length:
-        settings.max_length = args.max_length
-    if args.embedding_model:
-        settings.embedding_model = args.embedding_model
-    if args.device:
-        settings.device = args.device
-    if args.no_offload:
-        settings.offload_model = False
+    # Use CLI arguments with fallback to config, then to defaults
+    chunk_size = args.chunk_size if args.chunk_size is not None else getattr(settings, 'chunk_size', 1000)
+    chunk_overlap = args.chunk_overlap if args.chunk_overlap is not None else getattr(settings, 'chunk_overlap', 200)
+    max_pages = args.max_pages if args.max_pages is not None else getattr(settings, 'max_pages', None)
+    questions_per_chunk = args.questions_per_chunk if args.questions_per_chunk is not None else getattr(settings, 'questions_per_chunk', 3)
+    llm_model = args.llm_model if args.llm_model is not None else getattr(settings, 'llm_model', 'Qwen/Qwen2.5-32B-Instruct')
+    temperature = args.temperature if args.temperature is not None else getattr(settings, 'temperature', 0.7)
+    top_p = args.top_p if args.top_p is not None else getattr(settings, 'top_p', 0.9)
+    max_length = args.max_length if args.max_length is not None else getattr(settings, 'max_length', 512)
+    do_sample = args.do_sample if hasattr(args, 'do_sample') else getattr(settings, 'do_sample', True)
+    embedding_model = args.embedding_model if args.embedding_model is not None else getattr(settings, 'embedding_model', 'Qwen/Qwen2-0.5B-Instruct')
+    device = args.device if args.device is not None else getattr(settings, 'device', 'auto')
+    batch_size = args.batch_size if args.batch_size is not None else getattr(settings, 'batch_size', 32)
+    offload_model = not args.no_offload if hasattr(args, 'no_offload') else getattr(settings, 'offload_model', True)
+    
+    logger.info(f"Using parameters:")
+    logger.info(f"  - Chunk size: {chunk_size}")
+    logger.info(f"  - Chunk overlap: {chunk_overlap}")
+    logger.info(f"  - Max pages: {max_pages}")
+    logger.info(f"  - Questions per chunk: {questions_per_chunk}")
+    logger.info(f"  - LLM model: {llm_model}")
+    logger.info(f"  - Temperature: {temperature}")
+    logger.info(f"  - Top-p: {top_p}")
+    logger.info(f"  - Max length: {max_length}")
+    logger.info(f"  - Do sample: {do_sample}")
+    logger.info(f"  - Embedding model: {embedding_model}")
+    logger.info(f"  - Device: {device}")
+    logger.info(f"  - Batch size: {batch_size}")
+    logger.info(f"  - Offload model: {offload_model}")
     
     # Initialize processors
-    doc_processor = DocumentProcessor(max_pages=settings.max_pages)
+    doc_processor = DocumentProcessor(max_pages=max_pages)
     chunker = TextChunker(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap
     )
     qa_generator = QAGenerator(
-        num_questions_per_chunk=settings.questions_per_chunk,
-        llm_model=settings.llm_model,
-        max_length=settings.max_length,
-        temperature=settings.temperature,
-        top_p=settings.top_p,
-        do_sample=settings.do_sample,
-        offload_model=settings.offload_model
+        num_questions_per_chunk=questions_per_chunk,
+        llm_model=llm_model,
+        max_length=max_length,
+        temperature=temperature,
+        top_p=top_p,
+        do_sample=do_sample,
+        offload_model=offload_model
     )
     embedding_generator = EmbeddingGenerator(
-        model_name=settings.embedding_model,
-        device=settings.device,
-        offload_model=settings.offload_model
+        model_name=embedding_model,
+        device=device,
+        batch_size=batch_size,
+        offload_model=offload_model
     )
     exporter = DataExporter(output_dir=args.output_dir)
     
@@ -382,23 +418,29 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
     
     logger.info(f"Processing Hugging Face dataset: {dataset_name}")
     
-    # Override settings with CLI arguments
-    if args.questions_per_chunk:
-        settings.questions_per_chunk = args.questions_per_chunk
-    if args.llm_model:
-        settings.llm_model = args.llm_model
-    if args.temperature:
-        settings.temperature = args.temperature
-    if args.top_p:
-        settings.top_p = args.top_p
-    if args.max_length:
-        settings.max_length = args.max_length
-    if args.embedding_model:
-        settings.embedding_model = args.embedding_model
-    if args.device:
-        settings.device = args.device
-    if args.no_offload:
-        settings.offload_model = False
+    # Use CLI arguments with fallback to config, then to defaults
+    questions_per_chunk = args.questions_per_chunk if args.questions_per_chunk is not None else getattr(settings, 'questions_per_chunk', 3)
+    llm_model = args.llm_model if args.llm_model is not None else getattr(settings, 'llm_model', 'Qwen/Qwen2.5-32B-Instruct')
+    temperature = args.temperature if args.temperature is not None else getattr(settings, 'temperature', 0.7)
+    top_p = args.top_p if args.top_p is not None else getattr(settings, 'top_p', 0.9)
+    max_length = args.max_length if args.max_length is not None else getattr(settings, 'max_length', 512)
+    do_sample = args.do_sample if hasattr(args, 'do_sample') else getattr(settings, 'do_sample', True)
+    embedding_model = args.embedding_model if args.embedding_model is not None else getattr(settings, 'embedding_model', 'Qwen/Qwen2-0.5B-Instruct')
+    device = args.device if args.device is not None else getattr(settings, 'device', 'auto')
+    batch_size = args.batch_size if args.batch_size is not None else getattr(settings, 'batch_size', 32)
+    offload_model = not args.no_offload if hasattr(args, 'no_offload') else getattr(settings, 'offload_model', True)
+    
+    logger.info(f"Using parameters:")
+    logger.info(f"  - Questions per chunk: {questions_per_chunk}")
+    logger.info(f"  - LLM model: {llm_model}")
+    logger.info(f"  - Temperature: {temperature}")
+    logger.info(f"  - Top-p: {top_p}")
+    logger.info(f"  - Max length: {max_length}")
+    logger.info(f"  - Do sample: {do_sample}")
+    logger.info(f"  - Embedding model: {embedding_model}")
+    logger.info(f"  - Device: {device}")
+    logger.info(f"  - Batch size: {batch_size}")
+    logger.info(f"  - Offload model: {offload_model}")
     
     # Initialize processors
     dataset_processor = DatasetProcessor(
@@ -406,18 +448,19 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
         max_samples=args.max_samples
     )
     qa_generator = QAGenerator(
-        num_questions_per_chunk=settings.questions_per_chunk,
-        llm_model=settings.llm_model,
-        max_length=settings.max_length,
-        temperature=settings.temperature,
-        top_p=settings.top_p,
-        do_sample=settings.do_sample,
-        offload_model=settings.offload_model
+        num_questions_per_chunk=questions_per_chunk,
+        llm_model=llm_model,
+        max_length=max_length,
+        temperature=temperature,
+        top_p=top_p,
+        do_sample=do_sample,
+        offload_model=offload_model
     )
     embedding_generator = EmbeddingGenerator(
-        model_name=settings.embedding_model,
-        device=settings.device,
-        offload_model=settings.offload_model
+        model_name=embedding_model,
+        device=device,
+        batch_size=batch_size,
+        offload_model=offload_model
     )
     exporter = DataExporter(output_dir=args.output_dir)
     
@@ -484,23 +527,29 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
     
     logger.info(f"Processing local dataset file: {file_path}")
     
-    # Override settings with CLI arguments
-    if args.questions_per_chunk:
-        settings.questions_per_chunk = args.questions_per_chunk
-    if args.llm_model:
-        settings.llm_model = args.llm_model
-    if args.temperature:
-        settings.temperature = args.temperature
-    if args.top_p:
-        settings.top_p = args.top_p
-    if args.max_length:
-        settings.max_length = args.max_length
-    if args.embedding_model:
-        settings.embedding_model = args.embedding_model
-    if args.device:
-        settings.device = args.device
-    if args.no_offload:
-        settings.offload_model = False
+    # Use CLI arguments with fallback to config, then to defaults
+    questions_per_chunk = args.questions_per_chunk if args.questions_per_chunk is not None else getattr(settings, 'questions_per_chunk', 3)
+    llm_model = args.llm_model if args.llm_model is not None else getattr(settings, 'llm_model', 'Qwen/Qwen2.5-32B-Instruct')
+    temperature = args.temperature if args.temperature is not None else getattr(settings, 'temperature', 0.7)
+    top_p = args.top_p if args.top_p is not None else getattr(settings, 'top_p', 0.9)
+    max_length = args.max_length if args.max_length is not None else getattr(settings, 'max_length', 512)
+    do_sample = args.do_sample if hasattr(args, 'do_sample') else getattr(settings, 'do_sample', True)
+    embedding_model = args.embedding_model if args.embedding_model is not None else getattr(settings, 'embedding_model', 'Qwen/Qwen2-0.5B-Instruct')
+    device = args.device if args.device is not None else getattr(settings, 'device', 'auto')
+    batch_size = args.batch_size if args.batch_size is not None else getattr(settings, 'batch_size', 32)
+    offload_model = not args.no_offload if hasattr(args, 'no_offload') else getattr(settings, 'offload_model', True)
+    
+    logger.info(f"Using parameters:")
+    logger.info(f"  - Questions per chunk: {questions_per_chunk}")
+    logger.info(f"  - LLM model: {llm_model}")
+    logger.info(f"  - Temperature: {temperature}")
+    logger.info(f"  - Top-p: {top_p}")
+    logger.info(f"  - Max length: {max_length}")
+    logger.info(f"  - Do sample: {do_sample}")
+    logger.info(f"  - Embedding model: {embedding_model}")
+    logger.info(f"  - Device: {device}")
+    logger.info(f"  - Batch size: {batch_size}")
+    logger.info(f"  - Offload model: {offload_model}")
     
     # Initialize processors
     dataset_processor = DatasetProcessor(
@@ -508,18 +557,19 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
         max_samples=args.max_samples
     )
     qa_generator = QAGenerator(
-        num_questions_per_chunk=settings.questions_per_chunk,
-        llm_model=settings.llm_model,
-        max_length=settings.max_length,
-        temperature=settings.temperature,
-        top_p=settings.top_p,
-        do_sample=settings.do_sample,
-        offload_model=settings.offload_model
+        num_questions_per_chunk=questions_per_chunk,
+        llm_model=llm_model,
+        max_length=max_length,
+        temperature=temperature,
+        top_p=top_p,
+        do_sample=do_sample,
+        offload_model=offload_model
     )
     embedding_generator = EmbeddingGenerator(
-        model_name=settings.embedding_model,
-        device=settings.device,
-        offload_model=settings.offload_model
+        model_name=embedding_model,
+        device=device,
+        batch_size=batch_size,
+        offload_model=offload_model
     )
     exporter = DataExporter(output_dir=args.output_dir)
     
