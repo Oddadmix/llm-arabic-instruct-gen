@@ -257,11 +257,11 @@ python cli.py --dataset "squad" --config my_config.json
 
 ### Dataset-Specific Options
 
-- `--dataset-config`: Dataset configuration name (for datasets with multiple configs)
+- `--dataset-config`: Dataset configuration name (for datasets with multiple configs) (default: None)
 - `--dataset-split`: Dataset split to use (default: train)
 - `--text-column`: Column name containing text data (default: text)
-- `--file-type`: File type for local dataset files (auto, csv, json, jsonl, parquet)
-- `--max-samples`: Maximum number of samples to process from dataset
+- `--file-type`: File type for local dataset files (auto, csv, json, jsonl, parquet) (default: auto-detect)
+- `--max-samples`: Maximum number of samples to process from dataset (default: None - process all)
 
 ### Main Options
 
@@ -271,9 +271,75 @@ python cli.py --dataset "squad" --config my_config.json
 
 ### Document Processing Options (for files only)
 
-- `--chunk-size`: Size of text chunks (overrides config)
-- `--chunk-overlap`: Overlap between text chunks (overrides config)
-- `--max-pages`: Maximum number of pages to process (for PDFs only, overrides config)
+- `--chunk-size`: Size of text chunks (default: None - use config value, fallback: 1000)
+- `--chunk-overlap`: Overlap between text chunks (default: None - use config value, fallback: 200)
+- `--max-pages`: Maximum number of pages to process (for PDFs only) (default: None - use config value)
+
+### QA Generation Options
+
+- `--questions-per-chunk`: Number of questions to generate per chunk (default: None - use config value, fallback: 3)
+- `--llm-model`: LLM model for question generation (default: None - use config value, fallback: Qwen/Qwen2.5-32B-Instruct)
+- `--temperature`: Temperature for LLM generation (default: None - use config value, fallback: 0.7)
+- `--top-p`: Top-p for LLM generation (default: None - use config value, fallback: 0.9)
+- `--max-length`: Maximum length for LLM generation (default: None - use config value, fallback: 512)
+- `--do-sample`: Enable sampling for LLM generation (default: None - use config value, fallback: True)
+
+### Embedding Options
+
+- `--embedding-model`: Embedding model for text embeddings (default: None - use config value, fallback: Qwen/Qwen2-0.5B-Instruct)
+- `--device`: Device to use for models (cpu, cuda, mps, auto) (default: None - use config value, fallback: auto)
+- `--batch-size`: Batch size for embedding generation (default: None - use config value, fallback: 32)
+
+### Memory Management Options
+
+- `--no-offload`: Disable model offloading to save memory (models will stay loaded) (default: None - use config value, fallback: False)
+
+### Export Options
+
+- `--no-save-individual`: Disable saving individual chunk and QA pair files (default: None - use config value, fallback: False)
+
+### Logging Options
+
+- `--log-level`: Logging level (DEBUG, INFO, WARNING, ERROR) (default: INFO)
+- `--log-file`: Log file path (default: None - log to console only)
+
+## Parameter Hierarchy
+
+The tool uses a three-tier parameter hierarchy:
+
+1. **CLI Arguments**: Highest priority - explicitly specified command-line arguments
+2. **Config File**: Medium priority - values from the configuration file
+3. **Built-in Defaults**: Lowest priority - hardcoded fallback values
+
+For example, if you specify `--llm-model "custom-model"`, it will use that model regardless of what's in the config file. If you don't specify the argument, it will use the value from the config file, and if that's not available, it will use the built-in default.
+
+## Quick Examples with Defaults
+
+### Minimal Commands (using all defaults):
+
+```bash
+# Process PDF with all defaults
+python cli.py --file document.pdf
+
+# Process dataset with all defaults
+python cli.py --dataset "squad"
+
+# Process local file with all defaults
+python cli.py --dataset-file data.csv
+```
+
+### Custom Parameters (overriding defaults):
+
+```bash
+# Override specific parameters
+python cli.py --file document.pdf --chunk-size 800 --questions-per-chunk 5
+
+# Override model parameters
+python cli.py --dataset "squad" --llm-model "Qwen/Qwen2.5-7B-Instruct" --temperature 0.8
+
+# Override memory settings
+python cli.py --file document.pdf --no-offload --batch-size 64
+```
 
 ## Output Structure
 
