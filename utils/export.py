@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -198,28 +199,80 @@ class DataExporter:
         return str(qa_pairs_dir)
 
     def save_chunk_incrementally(self, chunk: str, chunk_index: int, base_filename: str) -> str:
-        """Save a single chunk as a .txt file incrementally."""
+        """Save a single chunk as a .txt file."""
         chunk_dir = self.output_dir / f"{base_filename}_chunks"
         chunk_dir.mkdir(parents=True, exist_ok=True)
         
-        # Use zero-padded 4-digit format for chunk filename
         chunk_path = chunk_dir / f"chunk_{chunk_index:04d}.txt"
         with open(chunk_path, 'w', encoding='utf-8') as f:
             f.write(chunk)
         
-        logger.info(f"Saved chunk {chunk_index} to {chunk_path}")
+        logger.debug(f"Saved chunk {chunk_index} to {chunk_path}")
         return str(chunk_path)
-    
+
     def save_qa_pairs_incrementally(self, qa_pairs: List[Dict[str, Any]], chunk_index: int, base_filename: str) -> str:
-        """Save QA pairs for a single chunk as individual .json files incrementally."""
-        qa_pairs_dir = self.output_dir / f"{base_filename}_qa_pairs"
-        qa_pairs_dir.mkdir(parents=True, exist_ok=True)
+        """Save QA pairs for a chunk as separate .json files."""
+        qa_dir = self.output_dir / f"{base_filename}_qa_pairs"
+        qa_dir.mkdir(parents=True, exist_ok=True)
         
+        saved_files = []
         for qa_idx, qa_pair in enumerate(qa_pairs):
-            # Use zero-padded 4-digit format for QA pair filename
-            qa_file = qa_pairs_dir / f"qa_pair_{chunk_index:04d}_{qa_idx:04d}.json"
-            with open(qa_file, 'w', encoding='utf-8') as f:
+            qa_path = qa_dir / f"chunk_{chunk_index:04d}_qa_{qa_idx:02d}.json"
+            with open(qa_path, 'w', encoding='utf-8') as f:
                 json.dump(qa_pair, f, indent=2, ensure_ascii=False)
+            saved_files.append(str(qa_path))
         
-        logger.info(f"Saved {len(qa_pairs)} QA pairs for chunk {chunk_index} to {qa_pairs_dir}")
-        return str(qa_pairs_dir) 
+        logger.debug(f"Saved {len(qa_pairs)} QA pairs for chunk {chunk_index}")
+        return str(qa_dir)
+
+    def save_chunk(self, chunk: str, filename: str) -> str:
+        """Save a single chunk as a .txt file with the given filename."""
+        chunk_path = self.output_dir / filename
+        chunk_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(chunk_path, 'w', encoding='utf-8') as f:
+            f.write(chunk)
+        
+        logger.debug(f"Saved chunk to {chunk_path}")
+        return str(chunk_path)
+
+    def save_qa_pair(self, qa_pair: Dict[str, Any], filename: str) -> str:
+        """Save a single QA pair as a .json file with the given filename."""
+        qa_path = self.output_dir / filename
+        qa_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(qa_path, 'w', encoding='utf-8') as f:
+            json.dump(qa_pair, f, indent=2, ensure_ascii=False)
+        
+        logger.debug(f"Saved QA pair to {qa_path}")
+        return str(qa_path)
+
+    def export_dataset(self, instructions: List[Dict[str, Any]], embeddings: Optional[np.ndarray] = None, 
+                      output_format: str = "all") -> Dict[str, str]:
+        """Export the complete dataset in the specified format(s)."""
+        exported_files = {}
+        
+        # Generate base filename from timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_filename = f"dataset_{timestamp}"
+        
+        if output_format in ["json", "all"]:
+            exported_files["instructions_json"] = self.export_json(instructions, f"{base_filename}_instructions")
+        
+        if output_format in ["csv", "all"]:
+            exported_files["instructions_csv"] = self.export_csv(instructions, f"{base_filename}_instructions")
+        
+        if output_format == "all":
+            # Export in multiple formats
+            exported_files.update(self.export_multiple_formats(instructions, base_filename))
+        
+        # Save embeddings if provided
+        if embeddings is not None:
+            embeddings_file = self.output_dir / f"{base_filename}_embeddings.npy"
+            np.save(embeddings_file, embeddings)
+            exported_files["embeddings"] = str(embeddings_file)
+            logger.info(f"Saved embeddings to {embeddings_file}")
+        
+        logger.info(f"Dataset exported successfully. Files: {list(exported_files.keys())}")
+        return exported_files 
