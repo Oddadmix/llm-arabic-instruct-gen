@@ -64,9 +64,16 @@ Examples:
   python cli.py --dataset "wikitext" --dataset-config "wikitext-103-raw-v1"
   python cli.py --dataset "arabic-news" --max-samples 1000
   
+  # Process datasets with specific start index
+  python cli.py --dataset "squad" --start-index 1000 --max-samples 500
+  python cli.py --dataset "wikitext" --start-index 5000 --max-samples 1000
+  
   # Process local dataset files
   python cli.py --dataset-file data.csv --text-column "text"
   python cli.py --dataset-file data.jsonl --file-type json
+  
+  # Process local files with start index
+  python cli.py --dataset-file data.csv --start-index 100 --max-samples 200
   
   # Get dataset information
   python cli.py --dataset-info "squad"
@@ -140,6 +147,13 @@ Examples:
         type=int,
         default=None,
         help="Maximum number of samples to process from dataset (default: None - process all)"
+    )
+    
+    parser.add_argument(
+        "--start-index",
+        type=int,
+        default=0,
+        help="Index to start processing from in the dataset (default: 0)"
     )
     
     # Optional arguments
@@ -445,7 +459,8 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
     # Initialize processors
     dataset_processor = DatasetProcessor(
         text_column=args.text_column,
-        max_samples=args.max_samples
+        max_samples=args.max_samples,
+        start_index=args.start_index
     )
     qa_generator = QAGenerator(
         num_questions_per_chunk=questions_per_chunk,
@@ -554,7 +569,8 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
     # Initialize processors
     dataset_processor = DatasetProcessor(
         text_column=args.text_column,
-        max_samples=args.max_samples
+        max_samples=args.max_samples,
+        start_index=args.start_index
     )
     qa_generator = QAGenerator(
         num_questions_per_chunk=questions_per_chunk,

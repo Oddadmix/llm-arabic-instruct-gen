@@ -13,13 +13,15 @@ logger = logging.getLogger(__name__)
 class DatasetProcessor:
     """Handles Hugging Face datasets with pre-chunked text data."""
     
-    def __init__(self, text_column: str = "text", max_samples: Optional[int] = None):
+    def __init__(self, text_column: str = "text", max_samples: Optional[int] = None, start_index: int = 0):
         self.text_column = text_column
         self.max_samples = max_samples
+        self.start_index = start_index
         
         logger.info(f"DatasetProcessor initialized with:")
         logger.info(f"  - Text column: {text_column}")
         logger.info(f"  - Max samples: {max_samples if max_samples else 'unlimited'}")
+        logger.info(f"  - Start index: {start_index}")
     
     def load_dataset(self, dataset_name: str, split: str = "train", 
                     config_name: Optional[str] = None) -> List[str]:
@@ -28,6 +30,7 @@ class DatasetProcessor:
         logger.info(f"  - Split: {split}")
         logger.info(f"  - Config: {config_name if config_name else 'default'}")
         logger.info(f"  - Text column: {self.text_column}")
+        logger.info(f"  - Start index: {self.start_index}")
         
         try:
             # Load the dataset
@@ -47,6 +50,11 @@ class DatasetProcessor:
                 raise ValueError(f"Text column '{self.text_column}' not found in dataset. "
                                f"Available columns: {available_columns}")
             
+            # Validate start index
+            if self.start_index >= len(dataset):
+                raise ValueError(f"Start index {self.start_index} is out of range. "
+                               f"Dataset has {len(dataset)} samples.")
+            
             # Extract text chunks
             text_chunks = self._extract_text_chunks(dataset)
             
@@ -65,6 +73,7 @@ class DatasetProcessor:
         logger.info(f"Loading dataset from file: {file_path}")
         logger.info(f"  - File type: {file_type}")
         logger.info(f"  - Text column: {self.text_column}")
+        logger.info(f"  - Start index: {self.start_index}")
         
         try:
             # Load dataset from file
@@ -104,6 +113,11 @@ class DatasetProcessor:
                 raise ValueError(f"Text column '{self.text_column}' not found in dataset. "
                                f"Available columns: {available_columns}")
             
+            # Validate start index
+            if self.start_index >= len(dataset):
+                raise ValueError(f"Start index {self.start_index} is out of range. "
+                               f"Dataset has {len(dataset)} samples.")
+            
             # Extract text chunks
             text_chunks = self._extract_text_chunks(dataset)
             
@@ -123,14 +137,19 @@ class DatasetProcessor:
         
         text_chunks = []
         total_samples = len(dataset)
-        samples_to_process = min(total_samples, self.max_samples) if self.max_samples else total_samples
+        start_idx = self.start_index
+        end_idx = total_samples
         
-        logger.info(f"Processing {samples_to_process} samples out of {total_samples}")
+        if self.max_samples:
+            end_idx = min(total_samples, start_idx + self.max_samples)
         
-        for i, sample in enumerate(dataset):
-            if self.max_samples and i >= self.max_samples:
-                break
-                
+        samples_to_process = end_idx - start_idx
+        
+        logger.info(f"Processing {samples_to_process} samples from index {start_idx} to {end_idx-1} out of {total_samples}")
+        
+        for i in range(start_idx, end_idx):
+            sample = dataset[i]
+            
             # Extract text from the specified column
             text = sample.get(self.text_column, "")
             
@@ -146,8 +165,8 @@ class DatasetProcessor:
                 logger.debug(f"Sample {i + 1}: no valid text found")
             
             # Log progress every 1000 samples
-            if (i + 1) % 1000 == 0:
-                logger.info(f"Progress: {i + 1}/{samples_to_process} samples processed, {len(text_chunks)} chunks extracted")
+            if (i - start_idx + 1) % 1000 == 0:
+                logger.info(f"Progress: {i - start_idx + 1}/{samples_to_process} samples processed, {len(text_chunks)} chunks extracted")
         
         logger.info(f"Text chunk extraction completed: {len(text_chunks)} chunks extracted")
         return text_chunks

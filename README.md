@@ -121,6 +121,16 @@ Process only a subset of samples:
 python cli.py --dataset "arabic-news" --max-samples 1000 --text-column "content"
 ```
 
+Process from a specific starting point:
+
+```bash
+# Start from index 1000 and process 500 samples
+python cli.py --dataset "squad" --start-index 1000 --max-samples 500 --text-column "context"
+
+# Start from index 5000 and process 1000 samples
+python cli.py --dataset "wikitext" --start-index 5000 --max-samples 1000 --text-column "text"
+```
+
 ### Processing Local Dataset Files
 
 Process a CSV file:
@@ -139,6 +149,13 @@ Process a Parquet file:
 
 ```bash
 python cli.py --dataset-file data.parquet --file-type parquet --text-column "text"
+```
+
+Process from a specific starting point:
+
+```bash
+# Start from index 100 and process 200 samples
+python cli.py --dataset-file data.csv --start-index 100 --max-samples 200 --text-column "text"
 ```
 
 ### Getting Dataset Information
@@ -304,6 +321,7 @@ python cli.py --dataset "squad" --config my_config.json
 - `--text-column`: Column name containing text data (default: text)
 - `--file-type`: File type for local dataset files (auto, csv, json, jsonl, parquet) (default: auto-detect)
 - `--max-samples`: Maximum number of samples to process from dataset (default: None - process all)
+- `--start-index`: Index to start processing from in the dataset (default: 0)
 
 ### Main Options
 
@@ -382,6 +400,30 @@ python cli.py --dataset "squad" --llm-model "Qwen/Qwen2.5-7B-Instruct" --tempera
 # Override memory settings
 python cli.py --file document.pdf --no-offload --batch-size 64
 ```
+
+### Processing Large Datasets
+
+For large datasets, you can use the start-index feature to process in chunks or resume interrupted processing:
+
+```bash
+# Process first 1000 samples
+python cli.py --dataset "large-dataset" --max-samples 1000
+
+# Process next 1000 samples (starting from index 1000)
+python cli.py --dataset "large-dataset" --start-index 1000 --max-samples 1000
+
+# Resume processing from where you left off
+python cli.py --dataset "large-dataset" --start-index 5000 --max-samples 1000
+
+# Process specific range of samples
+python cli.py --dataset "large-dataset" --start-index 10000 --max-samples 500
+```
+
+This is particularly useful for:
+- **Resuming interrupted processing**: Start from where you left off
+- **Parallel processing**: Different workers can process different ranges
+- **Testing**: Process small subsets to test your setup
+- **Incremental processing**: Process large datasets in manageable chunks
 
 ## Output Structure
 
