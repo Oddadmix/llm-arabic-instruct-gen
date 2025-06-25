@@ -156,48 +156,34 @@ class QAGenerator:
         
         return qa_pairs
     
-    def _generate_qa_for_chunk(self, chunk: str, chunk_index: int) -> List[Dict[str, Any]]:
-        """Generate QA pairs for a single text chunk."""
-        logger.debug(f"Generating QA pairs for chunk {chunk_index}")
+    def _generate_qa_for_chunk(self, chunk: str, real_index: int) -> List[Dict[str, Any]]:
+        """Generate QA pairs for a single text chunk, using the real dataset index for IDs and filenames."""
+        logger.debug(f"Generating QA pairs for real dataset index {real_index}")
         
         # Ensure model is loaded
         if self.offload_model and not self.model_loaded:
             self._load_llm()
-        
         qa_pairs = []
-        
-        # Generate questions directly from the context
         logger.debug("Generating context-aware questions...")
-        
         for q_idx in range(self.num_questions_per_chunk):
             logger.debug(f"Generating question {q_idx + 1}/{self.num_questions_per_chunk}")
-            
             if self.pipeline is not None and self.model_loaded:
-                # Step 1: Generate question based on context
-                logger.debug("Step 1: Generating question based on context...")
                 question = self._generate_question_from_context(chunk, q_idx)
-                
-                # Step 2: Generate answer based on question and context
-                logger.debug("Step 2: Generating answer based on question and context...")
                 answer = self._generate_answer_from_question_context(chunk, question)
             else:
-                # If model is not available, skip this chunk
-                logger.warning(f"LLM model not available for chunk {chunk_index}, skipping QA generation")
+                logger.warning(f"LLM model not available for real index {real_index}, skipping QA generation")
                 continue
-            
             qa_pair = {
-                "id": f"chunk_{chunk_index}_question_{q_idx}",
+                "id": f"dataset_{real_index}_question_{q_idx}",
                 "question": question,
                 "answer": answer,
                 "context": chunk,
                 "question_index": q_idx,
-                "chunk_index": chunk_index
+                "chunk_index": real_index
             }
-            
             qa_pairs.append(qa_pair)
             logger.debug(f"Generated QA pair {q_idx + 1}: {len(question)} chars question, {len(answer)} chars answer")
-        
-        logger.debug(f"Generated {len(qa_pairs)} QA pairs for chunk {chunk_index}")
+        logger.debug(f"Generated {len(qa_pairs)} QA pairs for real dataset index {real_index}")
         return qa_pairs
     
     def _generate_question_from_context(self, context: str, question_index: int) -> str:

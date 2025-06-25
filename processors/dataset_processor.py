@@ -131,8 +131,8 @@ class DatasetProcessor:
             logger.error(f"Error loading dataset from file {file_path}: {str(e)}")
             raise
     
-    def _extract_text_chunks(self, dataset: Dataset) -> List[str]:
-        """Extract text chunks from the dataset."""
+    def _extract_text_chunks(self, dataset: Dataset) -> List[tuple]:
+        """Extract text chunks from the dataset, returning (real_index, chunk) tuples."""
         logger.info("Extracting text chunks from dataset...")
         
         text_chunks = []
@@ -149,25 +149,18 @@ class DatasetProcessor:
         
         for i in range(start_idx, end_idx):
             sample = dataset[i]
-            
-            # Extract text from the specified column
             text = sample.get(self.text_column, "")
-            
             if text and isinstance(text, str) and text.strip():
-                # Clean the text
                 cleaned_text = self._clean_text(text)
                 if cleaned_text:
-                    text_chunks.append(cleaned_text)
-                    logger.debug(f"Sample {i + 1}: extracted {len(cleaned_text)} characters")
+                    text_chunks.append((i, cleaned_text))  # i is the real dataset index
+                    logger.debug(f"Sample {i}: extracted {len(cleaned_text)} characters")
                 else:
-                    logger.debug(f"Sample {i + 1}: empty after cleaning")
+                    logger.debug(f"Sample {i}: empty after cleaning")
             else:
-                logger.debug(f"Sample {i + 1}: no valid text found")
-            
-            # Log progress every 1000 samples
+                logger.debug(f"Sample {i}: no valid text found")
             if (i - start_idx + 1) % 1000 == 0:
                 logger.info(f"Progress: {i - start_idx + 1}/{samples_to_process} samples processed, {len(text_chunks)} chunks extracted")
-        
         logger.info(f"Text chunk extraction completed: {len(text_chunks)} chunks extracted")
         return text_chunks
     

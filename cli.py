@@ -480,31 +480,36 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
     exporter = DataExporter(output_dir=args.output_dir)
     
     try:
-        # Load dataset and extract text chunks
+        # Load dataset and extract (real_index, chunk) tuples
         logger.info("Step 1: Loading dataset and extracting text chunks...")
-        text_chunks = dataset_processor.load_dataset(
+        indexed_chunks = dataset_processor.load_dataset(
             dataset_name=dataset_name,
             split=args.dataset_split,
             config_name=args.dataset_config
         )
-        logger.info(f"Dataset loading completed. Total chunks: {len(text_chunks)}")
+        logger.info(f"Dataset loading completed. Total chunks: {len(indexed_chunks)}")
+        
+        # For embeddings, we need just the text
+        text_chunks = [chunk for (_, chunk) in indexed_chunks]
         
         # Generate QA pairs
         logger.info("Step 2: Generating QA pairs...")
         
-        # Define save callback for incremental saving
-        def save_incrementally(chunk, chunk_qa_pairs, chunk_index):
+        def save_incrementally(chunk, chunk_qa_pairs, chunk_index, real_index=None):
+            idx = real_index if real_index is not None else chunk_index
             if not args.no_save_individual:
-                # Save chunk as separate file
-                chunk_filename = f"dataset_chunk_{chunk_index:04d}.txt"
+                chunk_filename = f"dataset_chunk_{idx:06d}.txt"
                 exporter.save_chunk(chunk, chunk_filename)
-                
-                # Save QA pairs as separate files
                 for qa_idx, qa_pair in enumerate(chunk_qa_pairs):
-                    qa_filename = f"dataset_chunk_{chunk_index:04d}_qa_{qa_idx:02d}.json"
+                    qa_filename = f"dataset_chunk_{idx:06d}_qa_{qa_idx:02d}.json"
                     exporter.save_qa_pair(qa_pair, qa_filename)
         
-        qa_pairs = qa_generator.generate_qa_pairs(text_chunks, save_callback=save_incrementally)
+        # Generate QA pairs, passing real_index to the callback and to the generator
+        qa_pairs = []
+        for chunk_index, (real_index, chunk) in enumerate(indexed_chunks):
+            chunk_qa_pairs = qa_generator._generate_qa_for_chunk(chunk, real_index)
+            qa_pairs.extend(chunk_qa_pairs)
+            save_incrementally(chunk, chunk_qa_pairs, chunk_index, real_index=real_index)
         logger.info(f"QA generation completed. Total QA pairs: {len(qa_pairs)}")
         
         # Generate embeddings
@@ -534,7 +539,6 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
     """Process local dataset file and generate instruction dataset."""
     logger = logging.getLogger(__name__)
     
-    # Validate file
     file_path_obj = Path(file_path)
     if not file_path_obj.exists():
         logger.error(f"File not found: {file_path}")
@@ -542,7 +546,6 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
     
     logger.info(f"Processing local dataset file: {file_path}")
     
-    # Use CLI arguments with fallback to config, then to defaults
     questions_per_chunk = args.questions_per_chunk if args.questions_per_chunk is not None else getattr(settings, 'questions_per_chunk', 3)
     llm_model = args.llm_model if args.llm_model is not None else getattr(settings, 'llm_model', 'Qwen/Qwen2.5-32B-Instruct')
     temperature = args.temperature if args.temperature is not None else getattr(settings, 'temperature', 0.7)
@@ -566,7 +569,6 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
     logger.info(f"  - Batch size: {batch_size}")
     logger.info(f"  - Offload model: {offload_model}")
     
-    # Initialize processors
     dataset_processor = DatasetProcessor(
         text_column=args.text_column,
         max_samples=args.max_samples,
@@ -590,50 +592,39 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
     exporter = DataExporter(output_dir=args.output_dir)
     
     try:
-        # Load dataset and extract text chunks
         logger.info("Step 1: Loading dataset file and extracting text chunks...")
-        text_chunks = dataset_processor.load_dataset_from_file(
+        indexed_chunks = dataset_processor.load_dataset_from_file(
             file_path=file_path,
             file_type=args.file_type
         )
-        logger.info(f"Dataset loading completed. Total chunks: {len(text_chunks)}")
+        logger.info(f"Dataset loading completed. Total chunks: {len(indexed_chunks)}")
+        text_chunks = [chunk for (_, chunk) in indexed_chunks]
         
-        # Generate QA pairs
         logger.info("Step 2: Generating QA pairs...")
-        
-        # Define save callback for incremental saving
-        def save_incrementally(chunk, chunk_qa_pairs, chunk_index):
+        def save_incrementally(chunk, chunk_qa_pairs, chunk_index, real_index=None):
+            idx = real_index if real_index is not None else chunk_index
             if not args.no_save_individual:
-                # Save chunk as separate file
-                chunk_filename = f"file_chunk_{chunk_index:04d}.txt"
+                chunk_filename = f"file_chunk_{idx:06d}.txt"
                 exporter.save_chunk(chunk, chunk_filename)
-                
-                # Save QA pairs as separate files
                 for qa_idx, qa_pair in enumerate(chunk_qa_pairs):
-                    qa_filename = f"file_chunk_{chunk_index:04d}_qa_{qa_idx:02d}.json"
+                    qa_filename = f"file_chunk_{idx:06d}_qa_{qa_idx:02d}.json"
                     exporter.save_qa_pair(qa_pair, qa_filename)
-        
-        qa_pairs = qa_generator.generate_qa_pairs(text_chunks, save_callback=save_incrementally)
+        qa_pairs = []
+        for chunk_index, (real_index, chunk) in enumerate(indexed_chunks):
+            chunk_qa_pairs = qa_generator._generate_qa_for_chunk(chunk, real_index)
+            qa_pairs.extend(chunk_qa_pairs)
+            save_incrementally(chunk, chunk_qa_pairs, chunk_index, real_index=real_index)
         logger.info(f"QA generation completed. Total QA pairs: {len(qa_pairs)}")
-        
-        # Generate embeddings
         logger.info("Step 3: Generating embeddings...")
         embeddings = embedding_generator.generate_embeddings(text_chunks)
         logger.info(f"Embedding generation completed. Total embeddings: {len(embeddings)}")
-        
-        # Convert to instruction format
         logger.info("Step 4: Converting to instruction format...")
         instructions = qa_generator.generate_instruction_format(qa_pairs)
         logger.info(f"Instruction format conversion completed. Total instructions: {len(instructions)}")
-        
-        # Export results
         logger.info("Step 5: Exporting results...")
         exporter.export_dataset(instructions, embeddings, args.output_format)
         logger.info(f"Export completed. Results saved to: {args.output_dir}")
-        
-        # Print summary
         print_summary(len(text_chunks), len(qa_pairs), len(embeddings), args.output_dir)
-        
     except Exception as e:
         logger.error(f"Error processing dataset file: {e}")
         raise
