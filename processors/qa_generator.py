@@ -201,19 +201,33 @@ class QAGenerator:
         return qa_pairs
     
     def _generate_question_from_context(self, context: str, question_index: int) -> str:
-        """Generate a question based on the context using English prompt but Arabic output."""
+        """Generate a self-contained question based on the context that doesn't require the original context to answer."""
         try:
-            logger.debug(f"Generating question from context {question_index + 1}")
+            logger.debug(f"Generating self-contained question from context {question_index + 1}")
             
-            # Create instruction for question generation
-            instruction = "Based on the following Arabic text, generate one relevant and intelligent question in Arabic that reflects a deep understanding of the content. The question should be natural, contextually appropriate, and may fall under various types like factual, inferential, analytical, comparative, causal, hypothetical, opinion-based, clarifying, predictive, evaluative, interpretive, reflective, quantitative, procedural, ethical, motivational, definition-based, contradiction-detecting, etc. The response should be only the question in Arabic — no explanations, translations, or additional commentary."
+            # Create instruction for self-contained question generation
+            instruction = """Based on the following Arabic text, generate one self-contained question in Arabic that includes all necessary information to answer it without needing the original context. 
+
+The question should:
+1. Be completely self-contained - include all relevant details, names, dates, facts, or context needed to answer it
+2. Be natural and conversational in Arabic
+3. Cover various types: factual, analytical, comparative, causal, hypothetical, opinion-based, evaluative, etc.
+4. Be specific enough that someone who hasn't read the original text could still answer it
+5. Include any necessary background information or context within the question itself
+
+Examples of good self-contained questions:
+- "ما هي العاصمة السياسية والاقتصادية لمصر؟" (What is the political and economic capital of Egypt?)
+- "كيف يؤثر تغير المناخ على الزراعة في منطقة الشرق الأوسط؟" (How does climate change affect agriculture in the Middle East?)
+- "ما هي الفوائد الصحية للتمر على جسم الإنسان؟" (What are the health benefits of dates on the human body?)
+
+The response should be only the question in Arabic — no explanations, translations, or additional commentary."""
             
             # Create messages for the conversation
             messages = [
                 {"role": "user", "content": f"{instruction}\n\nText: {context}"}
             ]
 
-            logger.info(f"Messages: {messages}")
+            logger.debug(f"Generating self-contained question from context...")
             
             # Generate response using pipeline
             outputs = self.pipeline(
@@ -227,21 +241,31 @@ class QAGenerator:
             # Clean up the question
             question = self._clean_question(question)
             
-            logger.debug(f"LLM generated question from context: {question[:100]}...")
+            logger.debug(f"LLM generated self-contained question: {question[:100]}...")
             
             return question
             
         except Exception as e:
-            logger.error(f"Error generating question from context with LLM: {e}")
+            logger.error(f"Error generating self-contained question from context with LLM: {e}")
             return ""
     
     def _generate_answer_from_question_context(self, context: str, question: str) -> str:
-        """Generate an answer based on the question and context."""
+        """Generate a comprehensive answer based on the question and context."""
         try:
-            logger.debug(f"Generating answer for question: {question[:50]}...")
+            logger.debug(f"Generating comprehensive answer for self-contained question: {question[:50]}...")
             
-            # Create instruction for answer generation
-            instruction = "Based on the following Arabic text, provide a comprehensive answer to the given question in Arabic. The answer should be accurate, relevant, and well-structured."
+            # Create instruction for comprehensive answer generation
+            instruction = """Based on the following Arabic text, provide a comprehensive and detailed answer to the given question in Arabic. 
+
+The answer should:
+1. Be thorough and well-structured
+2. Include relevant details, examples, and explanations
+3. Be written in clear, natural Arabic
+4. Provide a complete response that fully addresses the question
+5. Be educational and informative
+6. Use proper Arabic grammar and style
+
+Focus on providing a complete answer that would satisfy someone asking this question, even if they don't have access to the original text."""
             
             # Create messages for the conversation
             messages = [
@@ -263,12 +287,12 @@ class QAGenerator:
             # Clean up the answer
             answer = self._clean_answer(answer)
             
-            logger.debug(f"LLM generated answer from question-context: {answer[:100]}...")
+            logger.debug(f"LLM generated comprehensive answer: {answer[:100]}...")
             
             return answer
             
         except Exception as e:
-            logger.error(f"Error generating answer from question-context with LLM: {e}")
+            logger.error(f"Error generating comprehensive answer with LLM: {e}")
             return ""
     
     def _clean_question(self, question: str) -> str:
@@ -310,7 +334,7 @@ class QAGenerator:
         for qa in qa_pairs:
             instruction = {
                 "instruction": qa["question"],
-                "input": qa["context"],
+                "input": "",  # Empty since questions are now self-contained
                 "output": qa["answer"],
                 "id": qa["id"]
             }

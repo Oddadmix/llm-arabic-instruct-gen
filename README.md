@@ -9,8 +9,9 @@ A comprehensive tool for generating instruction datasets from PDF and TXT docume
 - **Local Dataset File Support**: Process CSV, JSON, JSONL, and Parquet files
 - **Intelligent Text Chunking**: Split text into optimal chunks with configurable overlap (for files)
 - **Pre-chunked Data Processing**: Use datasets with pre-chunked text data
+- **Self-Contained Q&A Generation**: Generate question-answer pairs where questions include all necessary context, making them independent of the original source text
 - **Two-Step LLM-Powered QA Generation**: Generate high-quality question-answer pairs using a two-step process:
-  1. **Question Generation**: Generate context-aware questions using English prompts with Arabic output
+  1. **Question Generation**: Generate self-contained questions that include all relevant details, names, dates, and context needed to answer them
   2. **Answer Generation**: Generate comprehensive answers based on the question and context
 - **Embedding Generation**: Create vector embeddings for semantic search and similarity matching
 - **Multiple Export Formats**: Export data in JSON, CSV, and Alpaca instruction formats
@@ -18,6 +19,47 @@ A comprehensive tool for generating instruction datasets from PDF and TXT docume
 - **Arabic Language Support**: Full support for Arabic text processing and chunking
 - **Detailed Logging**: Comprehensive logging throughout the pipeline
 - **Configurable Pipeline**: Flexible configuration via JSON files and command-line options
+
+## Q&A Generation Approach
+
+### Self-Contained Questions
+
+The tool generates **self-contained questions** that include all necessary information to answer them without requiring the original context. This approach creates traditional Q&A pairs rather than RAG (Retrieval-Augmented Generation) style questions.
+
+#### Key Characteristics:
+
+1. **Complete Context**: Questions include all relevant details, names, dates, facts, and background information
+2. **Standalone**: Questions can be answered by someone who hasn't read the original text
+3. **Natural Language**: Questions are written in natural, conversational Arabic
+4. **Diverse Types**: Covers factual, analytical, comparative, causal, hypothetical, and evaluative questions
+
+#### Examples:
+
+**Good Self-Contained Questions:**
+- "ما هي العاصمة السياسية والاقتصادية لمصر؟" (What is the political and economic capital of Egypt?)
+- "كيف يؤثر تغير المناخ على الزراعة في منطقة الشرق الأوسط؟" (How does climate change affect agriculture in the Middle East?)
+- "ما هي الفوائد الصحية للتمر على جسم الإنسان؟" (What are the health benefits of dates on the human body?)
+
+**Comprehensive Answers:**
+- Detailed, well-structured responses
+- Include relevant examples and explanations
+- Written in clear, natural Arabic
+- Provide complete information to satisfy the question
+
+### Output Format
+
+The generated Q&A pairs are exported in instruction format with empty input fields:
+
+```json
+{
+  "instruction": "ما هي العاصمة السياسية والاقتصادية لمصر؟",
+  "input": "",
+  "output": "القاهرة هي العاصمة السياسية والاقتصادية لمصر...",
+  "id": "chunk_0_question_0"
+}
+```
+
+This format is ideal for training instruction-following models where the question itself contains all necessary context.
 
 ## Installation
 

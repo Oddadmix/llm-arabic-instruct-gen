@@ -67,7 +67,7 @@ class DataExporter:
         for qa in qa_pairs:
             instruction = {
                 "instruction": qa["question"],
-                "input": qa["context"],
+                "input": "",  # Empty since questions are now self-contained
                 "output": qa["answer"]
             }
             instructions.append(instruction)
@@ -81,7 +81,7 @@ class DataExporter:
         for qa in qa_pairs:
             alpaca_item = {
                 "instruction": qa["question"],
-                "input": qa["context"],
+                "input": "",  # Empty since questions are now self-contained
                 "output": qa["answer"]
             }
             alpaca_data.append(alpaca_item)
@@ -109,7 +109,7 @@ class DataExporter:
         for idx, qa in enumerate(qa_pairs):
             alpaca_item = {
                 "instruction": qa["question"],
-                "input": qa["context"],
+                "input": "",  # Empty since questions are now self-contained
                 "output": qa["answer"]
             }
             datapoint_path = alpaca_dir / f"datapoint_{idx}.json"
