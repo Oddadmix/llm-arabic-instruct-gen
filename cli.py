@@ -245,20 +245,6 @@ Examples:
         help="Enable sampling for LLM generation (default: None - use config value)"
     )
     
-    parser.add_argument(
-        "--max-tokens-question",
-        type=int,
-        default=None,
-        help="Maximum tokens for question generation (default: None - use config value, fallback: 2048)"
-    )
-    
-    parser.add_argument(
-        "--max-tokens-answer",
-        type=int,
-        default=None,
-        help="Maximum tokens for answer generation (default: None - use config value, fallback: 2048)"
-    )
-    
     # Embedding options
     parser.add_argument(
         "--embedding-model",
@@ -404,9 +390,7 @@ def process_file(file_path: str, settings: Settings, args: argparse.Namespace):
         offload_model=offload_model,
         llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
         openai_api_key=args.openai_api_key,
-        openai_api_base=args.openai_api_base,
-        max_tokens_question=args.max_tokens_question if args.max_tokens_question is not None else 2048,
-        max_tokens_answer=args.max_tokens_answer if args.max_tokens_answer is not None else 2048
+        openai_api_base=args.openai_api_base
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
@@ -514,9 +498,7 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
         offload_model=offload_model,
         llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
         openai_api_key=args.openai_api_key,
-        openai_api_base=args.openai_api_base,
-        max_tokens_question=args.max_tokens_question if args.max_tokens_question is not None else 2048,
-        max_tokens_answer=args.max_tokens_answer if args.max_tokens_answer is not None else 2048
+        openai_api_base=args.openai_api_base
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
@@ -631,9 +613,7 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
         offload_model=offload_model,
         llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
         openai_api_key=args.openai_api_key,
-        openai_api_base=args.openai_api_base,
-        max_tokens_question=args.max_tokens_question if args.max_tokens_question is not None else 2048,
-        max_tokens_answer=args.max_tokens_answer if args.max_tokens_answer is not None else 2048
+        openai_api_base=args.openai_api_base
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
