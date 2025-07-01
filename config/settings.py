@@ -39,7 +39,11 @@ class Settings:
                 "max_length": 512,
                 "temperature": 0.7,
                 "top_p": 0.9,
-                "do_sample": True
+                "do_sample": True,
+                "offload_model": True,
+                "llm_backend": "transformers",
+                "openai_api_key": None,
+                "openai_api_base": None
             },
             "embeddings": {
                 "model": "sentence-transformers/all-MiniLM-L6-v2",

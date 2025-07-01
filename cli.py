@@ -245,6 +245,20 @@ Examples:
         help="Enable sampling for LLM generation (default: None - use config value)"
     )
     
+    parser.add_argument(
+        "--max-tokens-question",
+        type=int,
+        default=None,
+        help="Maximum tokens for question generation (default: None - use config value, fallback: 2048)"
+    )
+    
+    parser.add_argument(
+        "--max-tokens-answer",
+        type=int,
+        default=None,
+        help="Maximum tokens for answer generation (default: None - use config value, fallback: 2048)"
+    )
+    
     # Embedding options
     parser.add_argument(
         "--embedding-model",
@@ -306,6 +320,29 @@ Examples:
         version="LLM Dataset Instruction Generator v0.1.0"
     )
     
+    # LLM backend options
+    parser.add_argument(
+        "--llm-backend",
+        type=str,
+        choices=["transformers", "openai"],
+        default=None,
+        help="LLM backend to use: 'transformers' (default) or 'openai' (for OpenAI API)"
+    )
+    
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        default=None,
+        help="OpenAI API key (required if using --llm-backend openai)"
+    )
+    
+    parser.add_argument(
+        "--openai-api-base",
+        type=str,
+        default=None,
+        help="OpenAI API base URL (optional, for Azure/OpenAI-compatible endpoints)"
+    )
+    
     return parser
 
 
@@ -364,7 +401,12 @@ def process_file(file_path: str, settings: Settings, args: argparse.Namespace):
         temperature=temperature,
         top_p=top_p,
         do_sample=do_sample,
-        offload_model=offload_model
+        offload_model=offload_model,
+        llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
+        openai_api_key=args.openai_api_key,
+        openai_api_base=args.openai_api_base,
+        max_tokens_question=args.max_tokens_question if args.max_tokens_question is not None else 2048,
+        max_tokens_answer=args.max_tokens_answer if args.max_tokens_answer is not None else 2048
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
@@ -469,7 +511,12 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
         temperature=temperature,
         top_p=top_p,
         do_sample=do_sample,
-        offload_model=offload_model
+        offload_model=offload_model,
+        llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
+        openai_api_key=args.openai_api_key,
+        openai_api_base=args.openai_api_base,
+        max_tokens_question=args.max_tokens_question if args.max_tokens_question is not None else 2048,
+        max_tokens_answer=args.max_tokens_answer if args.max_tokens_answer is not None else 2048
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
@@ -581,7 +628,12 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
         temperature=temperature,
         top_p=top_p,
         do_sample=do_sample,
-        offload_model=offload_model
+        offload_model=offload_model,
+        llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
+        openai_api_key=args.openai_api_key,
+        openai_api_base=args.openai_api_base,
+        max_tokens_question=args.max_tokens_question if args.max_tokens_question is not None else 2048,
+        max_tokens_answer=args.max_tokens_answer if args.max_tokens_answer is not None else 2048
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
