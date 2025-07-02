@@ -230,6 +230,165 @@ python cli.py --file books/large_document.pdf --max-pages 5 --chunk-size 500
 python cli.py --file books/large_document.pdf --max-pages 3 --llm-model "Qwen/Qwen2.5-7B-Instruct"
 ```
 
+### Using OpenAI SDK Backend
+
+The tool supports using the OpenAI SDK as an alternative to Hugging Face transformers. This allows you to use OpenAI API, Ollama, LLM Studio, and other OpenAI-compatible endpoints.
+
+#### OpenAI API
+
+Use OpenAI's official API:
+
+```bash
+# Using OpenAI GPT-3.5-turbo
+python cli.py --file books/sample.pdf \
+    --llm-backend openai \
+    --llm-model "gpt-3.5-turbo" \
+    --openai-api-key "sk-your-openai-api-key"
+
+# Using OpenAI GPT-4
+python cli.py --file books/sample.txt \
+    --llm-backend openai \
+    --llm-model "gpt-4" \
+    --openai-api-key "sk-your-openai-api-key" \
+    --temperature 0.8 \
+    --questions-per-chunk 5
+```
+
+#### Ollama (Local Models)
+
+Use Ollama to run models locally with OpenAI-compatible API:
+
+```bash
+# Start Ollama server first (in another terminal):
+# ollama serve
+
+# Using Llama 2 with Ollama
+python cli.py --file books/sample.pdf \
+    --llm-backend openai \
+    --llm-model "llama2" \
+    --openai-api-base "http://localhost:11434/v1" \
+    --openai-api-key "ollama"
+
+# Using Mistral with Ollama
+python cli.py --file books/sample.txt \
+    --llm-backend openai \
+    --llm-model "mistral" \
+    --openai-api-base "http://localhost:11434/v1" \
+    --openai-api-key "ollama" \
+    --temperature 0.7
+
+# Using Qwen with Ollama
+python cli.py --file books/sample.pdf \
+    --llm-backend openai \
+    --llm-model "qwen2.5:7b" \
+    --openai-api-base "http://localhost:11434/v1" \
+    --openai-api-key "ollama" \
+    --questions-per-chunk 3
+```
+
+#### LLM Studio (Local Models)
+
+Use LLM Studio's OpenAI-compatible API:
+
+```bash
+# Using LLM Studio with custom model
+python cli.py --file books/sample.pdf \
+    --llm-backend openai \
+    --llm-model "llama-2-7b-chat" \
+    --openai-api-base "http://localhost:1234/v1" \
+    --openai-api-key "not-needed"
+
+# Using LLM Studio with different model
+python cli.py --file books/sample.txt \
+    --llm-backend openai \
+    --llm-model "mistral-7b-instruct" \
+    --openai-api-base "http://localhost:1234/v1" \
+    --openai-api-key "not-needed" \
+    --temperature 0.8
+```
+
+#### Azure OpenAI
+
+Use Azure OpenAI service:
+
+```bash
+# Using Azure OpenAI
+python cli.py --file books/sample.pdf \
+    --llm-backend openai \
+    --llm-model "gpt-35-turbo" \
+    --openai-api-key "your-azure-api-key" \
+    --openai-api-base "https://your-resource.openai.azure.com/v1"
+
+# Using Azure OpenAI with deployment name
+python cli.py --file books/sample.txt \
+    --llm-backend openai \
+    --llm-model "gpt-4" \
+    --openai-api-key "your-azure-api-key" \
+    --openai-api-base "https://your-resource.openai.azure.com/openai/deployments/your-deployment-name"
+```
+
+#### Other OpenAI-Compatible Endpoints
+
+Use any OpenAI-compatible API endpoint:
+
+```bash
+# Using Together AI
+python cli.py --file books/sample.pdf \
+    --llm-backend openai \
+    --llm-model "togethercomputer/llama-2-70b-chat" \
+    --openai-api-key "your-together-api-key" \
+    --openai-api-base "https://api.together.xyz/v1"
+
+# Using Anyscale
+python cli.py --file books/sample.txt \
+    --llm-backend openai \
+    --llm-model "meta-llama/Llama-2-7b-chat-hf" \
+    --openai-api-key "your-anyscale-api-key" \
+    --openai-api-base "https://api.endpoints.anyscale.com/v1"
+
+# Using local vLLM server
+python cli.py --file books/sample.pdf \
+    --llm-backend openai \
+    --llm-model "llama-2-7b-chat" \
+    --openai-api-base "http://localhost:8000/v1" \
+    --openai-api-key "not-needed"
+```
+
+#### Configuration File Support
+
+You can also configure OpenAI settings in your config file:
+
+```json
+{
+  "qa_generator": {
+    "llm_backend": "openai",
+    "llm_model": "gpt-3.5-turbo",
+    "openai_api_key": "your-api-key",
+    "openai_api_base": "https://api.openai.com/v1",
+    "temperature": 0.7,
+    "top_p": 0.9
+  }
+}
+```
+
+Then use it with:
+
+```bash
+python cli.py --file books/sample.pdf --config my_openai_config.json
+```
+
+#### Backend Comparison
+
+| Feature | Transformers Backend | OpenAI Backend |
+|---------|---------------------|----------------|
+| **Model Loading** | Downloads and loads models locally | Uses API calls |
+| **Memory Usage** | High (models loaded in memory) | Low (no local models) |
+| **Speed** | Fast (no network latency) | Slower (network calls) |
+| **Cost** | Free (after model download) | Per API call |
+| **Privacy** | Complete (local processing) | Depends on provider |
+| **Model Selection** | Any Hugging Face model | Provider-specific models |
+| **Offline Usage** | Yes | No (requires internet) |
+
 ### Export Control
 
 Control which files are saved:
@@ -339,6 +498,9 @@ python cli.py --dataset "squad" --config my_config.json
 
 - `--questions-per-chunk`: Number of questions to generate per chunk (default: None - use config value, fallback: 3)
 - `--llm-model`: LLM model for question generation (default: None - use config value, fallback: Qwen/Qwen2.5-32B-Instruct)
+- `--llm-backend`: LLM backend to use: 'transformers' (default) or 'openai' (for OpenAI API)
+- `--openai-api-key`: OpenAI API key (required if using --llm-backend openai)
+- `--openai-api-base`: OpenAI API base URL (optional, for Azure/OpenAI-compatible endpoints)
 - `--temperature`: Temperature for LLM generation (default: None - use config value, fallback: 0.7)
 - `--top-p`: Top-p for LLM generation (default: None - use config value, fallback: 0.9)
 - `--max-length`: Maximum length for LLM generation (default: None - use config value, fallback: 512)
@@ -496,6 +658,39 @@ The tool uses a two-step process for QA generation:
 - **Step 2**: The LLM uses the generated question and original context to create detailed answers in Arabic
 - **Quality Control**: Both questions and answers are cleaned and validated for quality
 
+### OpenAI-Compatible Models (with --llm-backend openai)
+
+When using the OpenAI backend, you can use any OpenAI-compatible model:
+
+**OpenAI API Models:**
+- `gpt-3.5-turbo` - Fast and cost-effective
+- `gpt-4` - High quality but more expensive
+- `gpt-4-turbo` - Balanced performance and cost
+
+**Ollama Models (Local):**
+- `llama2` - Meta's Llama 2 model
+- `mistral` - Mistral AI's model
+- `qwen2.5:7b` - Alibaba's Qwen model
+- `codellama` - Code-focused Llama variant
+- `neural-chat` - Intel's optimized model
+
+**LLM Studio Models (Local):**
+- `llama-2-7b-chat` - Llama 2 chat model
+- `mistral-7b-instruct` - Mistral instruction model
+- `qwen-7b-chat` - Qwen chat model
+- Any custom model loaded in LLM Studio
+
+**Azure OpenAI Models:**
+- `gpt-35-turbo` - Azure's GPT-3.5 variant
+- `gpt-4` - Azure's GPT-4 variant
+- Custom deployment names
+
+**Other Providers:**
+- Together AI models
+- Anyscale models
+- vLLM server models
+- Any OpenAI-compatible endpoint
+
 ### Embedding Models
 
 - `Qwen/Qwen2-0.5B-Instruct` (default)
@@ -555,6 +750,25 @@ exporter.export_qa_pairs(qa_pairs, "output/qa_pairs.json")
 - PyPDF2
 - NumPy
 - Pandas
+
+### Optional Dependencies
+
+For OpenAI backend support:
+```bash
+pip install openai>=1.0.0
+```
+
+**Note**: The tool uses the new OpenAI API format (openai>=1.0.0). If you're using an older version, please upgrade to the latest version.
+
+For GPU acceleration (CUDA):
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
+For Apple Silicon (M1/M2) acceleration:
+```bash
+pip install torch torchvision torchaudio
+```
 
 ## Contributing
 
