@@ -811,4 +811,62 @@ The tool supports the following file formats:
 ### File Size Considerations
 - **Large Files**: The tool can handle large documents efficiently
 - **Memory Management**: Automatic model offloading prevents memory issues
-- **Incremental Processing**: Files are processed in chunks to manage memory usage 
+- **Incremental Processing**: Files are processed in chunks to manage memory usage
+- 
+
+
+# Roadmap
+
+## Core Processing
+- [x] PDF and TXT file extraction with encoding support
+- [x] Intelligent text chunking with configurable overlap
+- [x] Hugging Face dataset integration
+- [x] Local dataset support (CSV, JSON, JSONL, Parquet)
+- [x] Start index and max samples for large datasets
+- [x] Page limiting for PDF processing
+
+## LLM Integration
+- [x] Dual backend: Transformers + OpenAI-compatible APIs
+- [x] Two-step QA generation (question → answer)
+- [x] Self-contained questions (no RAG dependency)
+- [x] Multiple providers: OpenAI, Ollama, LLM Studio, Azure
+- [x] Model type auto-detection
+- [x] Temperature, top-p, and sampling controls
+
+## Export & Output
+- [x] Multiple export formats (JSON, CSV, Alpaca)
+- [x] Vector embeddings generation
+- [x] Individual chunk and QA pair file saving
+- [x] Comprehensive metadata tracking
+- [x] Real-time file availability during processing
+
+## User Interface
+- [x] Comprehensive CLI with configuration files
+- [x] Three-tier parameter hierarchy (CLI → Config → Defaults)
+- [x] Detailed logging with configurable levels
+- [ ] Interactive web interface with drag-and-drop
+- [ ] Real-time processing progress visualization
+- [ ] Live QA preview and editing
+- [ ] Parameter tuning with instant feedback
+- [ ] Processing history and job management
+
+## Document Formats
+- [x] PDF text extraction
+- [x] Plain text files (TXT)
+- [ ] Microsoft Office (DOCX, PPTX, XLSX)
+- [ ] EPUB and ebook formats
+- [ ] HTML/Markdown with structure preservation
+
+## Quality Control
+- [x] Arabic punctuation and Unicode handling
+- [x] Error handling for problematic encodings
+- [ ] Automated quality scoring (relevance, completeness, difficulty)
+- [ ] Configurable quality thresholds and filtering
+- [ ] Quality metrics dashboard and reporting
+
+## Advanced Features
+- [x] Dataset information queries
+- [x] Memory usage optimization
+- [ ] Semantic chunking based on content similarity
+- [ ] Multiple-choice question generation
+- [ ] True/false questions with explanations
