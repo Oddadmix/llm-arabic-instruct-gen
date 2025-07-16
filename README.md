@@ -9,10 +9,10 @@ A comprehensive tool for generating instruction datasets from PDF and TXT docume
 - **Local Dataset File Support**: Process CSV, JSON, JSONL, and Parquet files
 - **Intelligent Text Chunking**: Split text into optimal chunks with configurable overlap (for files)
 - **Pre-chunked Data Processing**: Use datasets with pre-chunked text data
-- **Self-Contained Q&A Generation**: Generate question-answer pairs where questions include all necessary context, making them independent of the original source text
+- **Text-Only Q&A Generation**: Generate question-answer pairs that can ONLY be answered using information explicitly provided in the source text
 - **Two-Step LLM-Powered QA Generation**: Generate high-quality question-answer pairs using a two-step process:
-  1. **Question Generation**: Generate self-contained questions that include all relevant details, names, dates, and context needed to answer them
-  2. **Answer Generation**: Generate comprehensive answers based on the question and context
+  1. **Batch Question Generation**: Generate all questions for a chunk in one prompt to ensure diversity and prevent repetition
+  2. **Individual Answer Generation**: Generate answers individually for each question for better quality and context awareness
 - **Embedding Generation**: Create vector embeddings for semantic search and similarity matching
 - **Multiple Export Formats**: Export data in JSON, CSV, and Alpaca instruction formats
 - **Memory Management**: Automatic model offloading to save memory during processing
@@ -22,29 +22,44 @@ A comprehensive tool for generating instruction datasets from PDF and TXT docume
 
 ## Q&A Generation Approach
 
-### Self-Contained Questions
+### Batch Question Generation
 
-The tool generates **self-contained questions** that include all necessary information to answer them without requiring the original context. This approach creates traditional Q&A pairs rather than RAG (Retrieval-Augmented Generation) style questions.
+The tool uses an innovative **batch question generation** approach that generates all questions for a text chunk in a single LLM prompt. This ensures:
+
+1. **Question Diversity**: All questions are generated together, allowing the model to create diverse, non-repetitive questions
+2. **Context Awareness**: The model can see the entire chunk context when generating all questions simultaneously
+3. **Efficiency**: Reduces the number of LLM calls for question generation
+4. **Quality Control**: The model can ensure questions cover different aspects of the content
+
+### Text-Only Questions
+
+The tool generates **text-only questions** that can ONLY be answered using the information explicitly provided in the given text chunk. This ensures that questions are directly tied to the source material and don't require external knowledge.
 
 #### Key Characteristics:
 
-1. **Complete Context**: Questions include all relevant details, names, dates, facts, and background information
-2. **Standalone**: Questions can be answered by someone who hasn't read the original text
+1. **Text-Exclusive**: Questions can only be answered using information from the provided text
+2. **No External Knowledge**: Avoids questions about general facts, historical events, or information not mentioned
 3. **Natural Language**: Questions are written in natural, conversational Arabic
-4. **Diverse Types**: Covers factual, analytical, comparative, causal, hypothetical, and evaluative questions
+4. **Cognitive Diversity**: Covers various cognitive levels:
+   - **Factual/Recall**: Direct information retrieval (ما، من، متى، أين)
+   - **Comprehension**: Understanding concepts (كيف، لماذا)
+   - **Application**: Using presented information (ماذا لو، كيف يمكن)
+   - **Analysis**: Analyzing relationships (ما العلاقة بين، قارن)
+   - **Synthesis**: Combining ideas (ما الاستنتاج، اربط بين)
+   - **Evaluation**: Making judgments (بناءً على النص، قيّم)
 
 #### Examples:
 
-**Good Self-Contained Questions:**
-- "ما هي العاصمة السياسية والاقتصادية لمصر؟" (What is the political and economic capital of Egypt?)
-- "كيف يؤثر تغير المناخ على الزراعة في منطقة الشرق الأوسط؟" (How does climate change affect agriculture in the Middle East?)
-- "ما هي الفوائد الصحية للتمر على جسم الإنسان؟" (What are the health benefits of dates on the human body?)
+**Good Text-Only Questions:**
+- "ما هي المكونات الثلاثة التي ذكرها الكاتب في الوصفة؟" (What are the three components the author mentioned in the recipe?)
+- "حسب النص، كيف تؤثر درجة الحرارة المذكورة على عملية النمو؟" (According to the text, how does the mentioned temperature affect the growth process?)
+- "ما الفروقات التي وضحها المؤلف بين الطريقة الأولى والثانية؟" (What differences did the author clarify between the first and second methods?)
 
 **Comprehensive Answers:**
-- Detailed, well-structured responses
-- Include relevant examples and explanations
+- Detailed, well-structured responses using only text information
+- Include relevant details, examples, and explanations from the text
 - Written in clear, natural Arabic
-- Provide complete information to satisfy the question
+- Provide complete information that directly addresses the question
 
 ### Output Format
 
@@ -52,14 +67,23 @@ The generated Q&A pairs are exported in instruction format with empty input fiel
 
 ```json
 {
-  "instruction": "ما هي العاصمة السياسية والاقتصادية لمصر؟",
+  "instruction": "ما هي المكونات الثلاثة التي ذكرها الكاتب في الوصفة؟",
   "input": "",
-  "output": "القاهرة هي العاصمة السياسية والاقتصادية لمصر...",
+  "output": "ذكر الكاتب ثلاثة مكونات أساسية في الوصفة...",
   "id": "chunk_0_question_0"
 }
 ```
 
-This format is ideal for training instruction-following models where the question itself contains all necessary context.
+This format is ideal for training instruction-following models where questions are directly tied to the source text content.
+
+### Generation Process
+
+1. **Batch Question Generation**: For each text chunk, all questions are generated in a single LLM call with strict text-only requirements
+2. **Question Parsing**: The numbered list response is parsed to extract individual questions
+3. **Individual Answer Generation**: Each question is answered individually using only information from the provided text
+4. **Quality Control**: Questions are cleaned and validated to ensure they only reference text content
+
+This approach ensures question diversity while maintaining strict adherence to source material and preventing external knowledge requirements.
 
 ## Installation
 
@@ -586,6 +610,20 @@ This is particularly useful for:
 - **Parallel processing**: Different workers can process different ranges
 - **Testing**: Process small subsets to test your setup
 - **Incremental processing**: Process large datasets in manageable chunks
+
+### Demo Scripts
+
+Test the new batch question generation feature:
+
+```bash
+python test_batch_qa.py
+```
+
+See a demonstration of batch vs individual question generation:
+
+```bash
+python examples/batch_qa_demo.py
+```
 
 ## Output Structure
 

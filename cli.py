@@ -364,6 +364,7 @@ def process_file(file_path: str, settings: Settings, args: argparse.Namespace):
     logger.info(f"  - Chunk overlap: {chunk_overlap}")
     logger.info(f"  - Max pages: {max_pages}")
     logger.info(f"  - Questions per chunk: {questions_per_chunk}")
+    logger.info(f"  - QA Generation: Batch questions + Individual answers (ensures diversity)")
     logger.info(f"  - LLM model: {llm_model}")
     logger.info(f"  - Temperature: {temperature}")
     logger.info(f"  - Top-p: {top_p}")

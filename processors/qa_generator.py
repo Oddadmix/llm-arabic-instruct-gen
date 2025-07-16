@@ -186,19 +186,31 @@ class QAGenerator:
         # Ensure model is loaded
         if self.offload_model and not self.model_loaded and self.llm_backend == "transformers":
             self._load_llm()
+        
         qa_pairs = []
-        logger.debug("Generating context-aware questions...")
-        for q_idx in range(self.num_questions_per_chunk):
-            logger.debug(f"Generating question {q_idx + 1}/{self.num_questions_per_chunk}")
+        logger.debug("Generating all questions for chunk in one prompt...")
+        
+        # Generate all questions for this chunk in one prompt
+        if self.llm_backend == "transformers" and self.pipeline is not None and self.model_loaded:
+            questions = self._generate_all_questions_from_context_transformers(chunk)
+        elif self.llm_backend == "openai":
+            questions = self._generate_all_questions_from_context_openai(chunk)
+        else:
+            logger.warning(f"LLM model not available for real index {real_index}, skipping QA generation")
+            return qa_pairs
+        
+        # Generate answers for each question individually
+        for q_idx, question in enumerate(questions):
+            logger.debug(f"Generating answer for question {q_idx + 1}/{len(questions)}")
+            
             if self.llm_backend == "transformers" and self.pipeline is not None and self.model_loaded:
-                question = self._generate_question_from_context_transformers(chunk, q_idx)
                 answer = self._generate_answer_from_question_context_transformers(chunk, question)
             elif self.llm_backend == "openai":
-                question = self._generate_question_from_context_openai(chunk, q_idx)
                 answer = self._generate_answer_from_question_context_openai(chunk, question)
             else:
-                logger.warning(f"LLM model not available for real index {real_index}, skipping QA generation")
+                logger.warning(f"LLM model not available for answer generation, skipping")
                 continue
+                
             qa_pair = {
                 "id": f"dataset_{real_index}_question_{q_idx}",
                 "question": question,
@@ -209,8 +221,196 @@ class QAGenerator:
             }
             qa_pairs.append(qa_pair)
             logger.debug(f"Generated QA pair {q_idx + 1}: {len(question)} chars question, {len(answer)} chars answer")
+        
         logger.debug(f"Generated {len(qa_pairs)} QA pairs for real dataset index {real_index}")
         return qa_pairs
+    
+    def _generate_all_questions_from_context_transformers(self, context: str) -> List[str]:
+        """Generate all questions for a chunk in one prompt to ensure diversity."""
+        try:
+            logger.debug(f"Generating {self.num_questions_per_chunk} diverse questions from context in one prompt")
+            
+            # Create instruction for generating multiple diverse questions
+            instruction = f"""Based on the following Arabic text, generate exactly {self.num_questions_per_chunk} diverse, self-contained questions in Arabic. CRITICAL REQUIREMENT: Each question must be answerable ONLY using the information explicitly provided in the given text chunk - no external knowledge should be required.
+The questions should:
+
+Be answerable exclusively from the provided text - every piece of information needed to answer the question must be present in the text chunk
+Be completely self-contained - include all relevant details, names, dates, facts, or context mentioned in the text
+Be natural and conversational in Arabic
+Cover various cognitive levels and question types:
+
+Factual/Recall: Direct information retrieval from the text (ما، من، متى، أين)
+Comprehension: Understanding concepts explained in the text (كيف، لماذا)
+Application: Using information presented in the text (ماذا لو، كيف يمكن)
+Analysis: Analyzing relationships and connections within the text (ما العلاقة بين، قارن)
+Synthesis: Combining ideas presented in the text (ما الاستنتاج، اربط بين)
+Evaluation: Making judgments based on information in the text (بناءً على النص، قيّم)
+
+
+Never require external knowledge - avoid questions about general facts, historical events, or information not mentioned in the text
+Focus only on content, concepts, examples, data, and information explicitly stated in the provided text
+Be diverse and non-repetitive - each question should focus on different aspects, details, or perspectives from the text
+Vary in complexity, depth, and scope while staying within the text's boundaries
+Use natural Arabic phrasing and question structures
+
+Format your response as a numbered list:
+
+[First question in Arabic]
+[Second question in Arabic]
+[Third question in Arabic]
+... and so on for {self.num_questions_per_chunk} questions
+
+IMPORTANT: All questions must reference specific information from the text. Examples of context-dependent questions:
+
+Factual: "ما هي المكونات الثلاثة التي ذكرها الكاتب في الوصفة؟"
+Analytical: "حسب النص، كيف تؤثر درجة الحرارة المذكورة على عملية النمو؟"
+Comparative: "ما الفروقات التي وضحها المؤلف بين الطريقة الأولى والثانية؟"
+Causal: "وفقاً للنص، ما الأسباب التي ذكرها الباحث وراء هذه النتيجة؟"
+Evaluative: "بناءً على الأدلة المقدمة في النص، ما تقييم الكاتب للحل المقترح؟"
+Synthesis: "كيف ربط النص بين المفهومين المذكورين في الفقرة الثانية؟"
+
+AVOID questions like these that require external knowledge:
+
+❌ "ما هي عاصمة فرنسا؟" (requires general knowledge)
+❌ "متى حدثت الحرب العالمية الثانية؟" (historical fact not in text)
+❌ "ما هي فوائد فيتامين سي بشكل عام؟" (general medical knowledge)
+
+Do not use meta-referential phrases like "حسب النص" (according to the text), "ذكر الكاتب" (the author mentioned), "وفقاً للنص" (according to the text) - ask directly about the content
+
+The response should be only the numbered list of questions in Arabic — no explanations, translations, or additional commentary."""
+            
+            # Create messages for the conversation
+            messages = [
+                {"role": "user", "content": f"{instruction}\n\nText: {context}"}
+            ]
+
+            logger.debug(f"Generating {self.num_questions_per_chunk} diverse questions from context...")
+            
+            # Generate response using pipeline
+            outputs = self.pipeline(
+                messages,
+                max_new_tokens=2048,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                do_sample=self.do_sample
+            )
+            
+            # Extract the generated questions
+            response_text = outputs[0]["generated_text"][-1]["content"].strip()
+            
+            # Parse the numbered list to extract individual questions
+            questions = self._parse_numbered_questions(response_text)
+            
+            # Ensure we have the right number of questions
+            if len(questions) < self.num_questions_per_chunk:
+                logger.warning(f"Generated only {len(questions)} questions, expected {self.num_questions_per_chunk}")
+            elif len(questions) > self.num_questions_per_chunk:
+                questions = questions[:self.num_questions_per_chunk]
+                logger.info(f"Truncated to {self.num_questions_per_chunk} questions")
+            
+            # Clean up each question
+            cleaned_questions = []
+            for question in questions:
+                cleaned_question = self._clean_question(question)
+                if cleaned_question:
+                    cleaned_questions.append(cleaned_question)
+            
+            logger.debug(f"LLM generated {len(cleaned_questions)} diverse questions")
+            for i, q in enumerate(cleaned_questions):
+                logger.debug(f"Question {i+1}: {q[:100]}...")
+            
+            return cleaned_questions
+            
+        except Exception as e:
+            logger.error(f"Error generating diverse questions from context with LLM: {e}")
+            return []
+    
+    def _generate_all_questions_from_context_openai(self, context: str) -> List[str]:
+        """Generate all questions for a chunk in one prompt using OpenAI."""
+        try:
+            instruction = f"""Based on the following Arabic text, generate exactly {self.num_questions_per_chunk} diverse, self-contained questions in Arabic. CRITICAL REQUIREMENT: Each question must be answerable ONLY using the information explicitly provided in the given text chunk - no external knowledge should be required.
+The questions should:
+
+Be answerable exclusively from the provided text - every piece of information needed to answer the question must be present in the text chunk
+Be completely self-contained - include all relevant details, names, dates, facts, or context mentioned in the text
+Be natural and conversational in Arabic
+Cover various cognitive levels and question types:
+
+Factual/Recall: Direct information retrieval from the text (ما، من، متى، أين)
+Comprehension: Understanding concepts explained in the text (كيف، لماذا)
+Application: Using information presented in the text (ماذا لو، كيف يمكن)
+Analysis: Analyzing relationships and connections within the text (ما العلاقة بين، قارن)
+Synthesis: Combining ideas presented in the text (ما الاستنتاج، اربط بين)
+Evaluation: Making judgments based on information in the text (بناءً على النص، قيّم)
+
+
+Never require external knowledge - avoid questions about general facts, historical events, or information not mentioned in the text
+Focus only on content, concepts, examples, data, and information explicitly stated in the provided text
+Be diverse and non-repetitive - each question should focus on different aspects, details, or perspectives from the text
+Vary in complexity, depth, and scope while staying within the text's boundaries
+Use natural Arabic phrasing and question structures
+
+Format your response as a numbered list:
+
+[First question in Arabic]
+[Second question in Arabic]
+[Third question in Arabic]
+... and so on for {self.num_questions_per_chunk} questions
+
+IMPORTANT: All questions must reference specific information from the text. Examples of context-dependent questions:
+
+Factual: "ما هي المكونات الثلاثة التي ذكرها الكاتب في الوصفة؟"
+Analytical: "حسب النص، كيف تؤثر درجة الحرارة المذكورة على عملية النمو؟"
+Comparative: "ما الفروقات التي وضحها المؤلف بين الطريقة الأولى والثانية؟"
+Causal: "وفقاً للنص، ما الأسباب التي ذكرها الباحث وراء هذه النتيجة؟"
+Evaluative: "بناءً على الأدلة المقدمة في النص، ما تقييم الكاتب للحل المقترح؟"
+Synthesis: "كيف ربط النص بين المفهومين المذكورين في الفقرة الثانية؟"
+
+AVOID questions like these that require external knowledge:
+
+❌ "ما هي عاصمة فرنسا؟" (requires general knowledge)
+❌ "متى حدثت الحرب العالمية الثانية؟" (historical fact not in text)
+❌ "ما هي فوائد فيتامين سي بشكل عام؟" (general medical knowledge)
+
+Do not use meta-referential phrases like "حسب النص" (according to the text), "ذكر الكاتب" (the author mentioned), "وفقاً للنص" (according to the text) - ask directly about the content
+
+The response should be only the numbered list of questions in Arabic — no explanations, translations, or additional commentary."""
+
+            prompt = f"{instruction}\n\nText: {context}"
+            response = self.openai_client.chat.completions.create(
+                model=self.llm_model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2048,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                n=1
+            )
+            
+            response_text = response.choices[0].message.content.strip()
+            
+            # Parse the numbered list to extract individual questions
+            questions = self._parse_numbered_questions(response_text)
+            
+            # Ensure we have the right number of questions
+            if len(questions) < self.num_questions_per_chunk:
+                logger.warning(f"Generated only {len(questions)} questions, expected {self.num_questions_per_chunk}")
+            elif len(questions) > self.num_questions_per_chunk:
+                questions = questions[:self.num_questions_per_chunk]
+                logger.info(f"Truncated to {self.num_questions_per_chunk} questions")
+            
+            # Clean up each question
+            cleaned_questions = []
+            for question in questions:
+                cleaned_question = self._clean_question(question)
+                if cleaned_question:
+                    cleaned_questions.append(cleaned_question)
+            
+            logger.debug(f"OpenAI generated {len(cleaned_questions)} diverse questions")
+            return cleaned_questions
+            
+        except Exception as e:
+            logger.error(f"Error generating diverse questions from context with OpenAI: {e}")
+            return []
     
     def _generate_question_from_context_transformers(self, context: str, question_index: int) -> str:
         """Generate a self-contained question based on the context that doesn't require the original context to answer."""
@@ -267,17 +467,36 @@ The response should be only the question in Arabic — no explanations, translat
             logger.debug(f"Generating comprehensive answer for self-contained question: {question[:50]}...")
             
             # Create instruction for comprehensive answer generation
-            instruction = """Based on the following Arabic text, provide a comprehensive and detailed answer to the given question in Arabic. 
+            instruction = """Based on the following Arabic text, generate one question in Arabic that can **ONLY** be answered using the information explicitly provided in the given text.
 
-The answer should:
-1. Be thorough and well-structured
-2. Include relevant details, examples, and explanations
-3. Be written in clear, natural Arabic
-4. Provide a complete response that fully addresses the question
-5. Be educational and informative
-6. Use proper Arabic grammar and style
+**CRITICAL REQUIREMENT: The question must be answerable exclusively from the provided text chunk - no external knowledge should be required.**
 
-Focus on providing a complete answer that would satisfy someone asking this question, even if they don't have access to the original text."""
+The question should:
+1. **Be answerable only from the provided text** - every piece of information needed to answer the question must be present in the text
+2. Be natural and conversational in Arabic
+3. Cover one of various cognitive types:
+   - **Factual/Recall**: Direct information retrieval from the text (ما، من، متى، أين)
+   - **Comprehension**: Understanding concepts explained in the text (كيف، لماذا)
+   - **Application**: Using information presented in the text (ماذا لو، كيف يمكن)
+   - **Analysis**: Analyzing relationships within the text (ما العلاقة بين، قارن)
+   - **Synthesis**: Combining ideas presented in the text (ما الاستنتاج، اربط بين)
+   - **Evaluation**: Making judgments based on information in the text (بناءً على النص، قيّم)
+4. **Never require external knowledge** - avoid questions about general facts, historical events, or information not mentioned in the text
+5. Focus only on content, concepts, examples, data, and information explicitly stated in the provided text
+6. Include necessary context from the text within the question to make it clear and specific
+7. **Do not use meta-referential phrases** like "حسب النص" (according to the text), "ذكر الكاتب" (the author mentioned), "وفقاً للنص" (according to the text) - ask directly about the content
+
+**Examples of good context-dependent questions:**
+- "ما هي الخطوات الثلاث لتحضير هذا الطبق؟" (What are the three steps for preparing this dish?)
+- "كيف أثرت التغييرات المناخية على المحاصيل في هذه المنطقة؟" (How did climate changes affect crops in this region?)
+- "ما الفرق بين الطريقتين المذكورتين؟" (What difference between the two mentioned methods?)
+
+**AVOID questions like these that require external knowledge:**
+- ❌ "ما هي عاصمة مصر؟" (requires general geographic knowledge)
+- ❌ "متى تأسست الأمم المتحدة؟" (historical fact not in text)
+- ❌ "ما هي خصائص الماء بشكل عام؟" (general scientific knowledge)
+
+The response should be only the question in Arabic — no explanations, translations, or additional commentary."""
             
             # Create messages for the conversation
             messages = [
@@ -328,8 +547,37 @@ Focus on providing a complete answer that would satisfy someone asking this ques
     
     def _generate_answer_from_question_context_openai(self, context: str, question: str) -> str:
         try:
-            instruction = """Based on the following Arabic text, provide a comprehensive and detailed answer to the given question in Arabic. \
-\nThe answer should:\n1. Be thorough and well-structured\n2. Include relevant details, examples, and explanations\n3. Be written in clear, natural Arabic\n4. Provide a complete response that fully addresses the question\n5. Be educational and informative\n6. Use proper Arabic grammar and style\n\nFocus on providing a complete answer that would satisfy someone asking this question, even if they don't have access to the original text."""
+            instruction = """Based on the following Arabic text, provide a comprehensive and detailed answer to the given question in Arabic using ONLY the information explicitly provided in the text.
+CRITICAL REQUIREMENT: The answer must be based exclusively on the provided text - do not add any external knowledge, general facts, or information not mentioned in the text.
+The answer should:
+
+Use only information from the provided text - every fact, detail, and explanation must come directly from the source text
+Be thorough and well-structured based on available information in the text
+Include all relevant details, examples, and explanations that are mentioned in the text
+Be written in clear, natural Arabic
+Provide a complete response using only what the text provides to address the question
+Be educational and informative within the boundaries of the given text
+Use proper Arabic grammar and style
+If the text doesn't contain enough information to fully answer the question, acknowledge this limitation
+
+Guidelines for context-based answers:
+
+Quote or paraphrase specific information from the text
+Organize the information logically as presented in the text
+Never supplement with external knowledge even if it would make the answer more complete
+If certain aspects of the question cannot be answered from the text, state this clearly
+
+Example of a good context-based answer:
+Question: "ما هي الخطوات المذكورة لتحضير الطبق؟"
+Answer: "هناك ثلاث خطوات رئيسية لتحضير هذا الطبق: أولاً، تحضير المكونات التالية... ثانياً، عملية الخلط التي تتم عبر... وأخيراً، مرحلة الطبخ التي تستغرق..."
+AVOID adding external information like:
+
+❌ General facts not mentioned in the text
+❌ Historical context not provided in the source
+❌ Scientific explanations beyond what's in the text
+❌ Personal opinions or interpretations not supported by the text
+
+Focus on extracting, organizing, and presenting the information that is explicitly available in the provided text to create the most comprehensive answer possible within those boundaries."""
             prompt = f"{instruction}\n\nText: {context}\n\nQuestion: {question}"
             response = self.openai_client.chat.completions.create(
                 model=self.llm_model,
@@ -377,6 +625,37 @@ Focus on providing a complete answer that would satisfy someone asking this ques
         #     answer = answer[:500] + "..."
         
         return answer
+    
+    def _parse_numbered_questions(self, response_text: str) -> List[str]:
+        """Parse numbered questions from the LLM response."""
+        questions = []
+        
+        # Split by lines and look for numbered patterns
+        lines = response_text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Match patterns like "1.", "1-", "1)", "1-", etc.
+            match = re.match(r'^\d+[\.\)\-\s]+(.+)$', line)
+            if match:
+                question = match.group(1).strip()
+                if question:
+                    questions.append(question)
+        
+        # If no numbered format found, try to split by other patterns
+        if not questions:
+            # Try splitting by question marks
+            parts = response_text.split('؟')
+            for part in parts:
+                part = part.strip()
+                if part and len(part) > 10:  # Minimum question length
+                    # Add back the question mark
+                    questions.append(part + '؟')
+        
+        return questions
     
     def generate_instruction_format(self, qa_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert QA pairs to instruction format for training."""

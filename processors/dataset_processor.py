@@ -176,11 +176,7 @@ class DatasetProcessor:
         if len(text.strip()) < 10:
             return ""
         
-        # Add section header for dataset chunks
-        section_header = f"\n\n=== DATASET CHUNK ===\n\n"
-        section_footer = f"\n\n=== END CHUNK ===\n\n"
-        
-        return section_header + text.strip() + section_footer
+        return  text.strip()
     
     def get_dataset_info(self, dataset_name: str, split: str = "train", 
                         config_name: Optional[str] = None) -> Dict[str, Any]:
