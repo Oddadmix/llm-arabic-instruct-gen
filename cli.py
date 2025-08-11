@@ -6,11 +6,14 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Optional
+import concurrent.futures
+from threading import Lock
 
 from config import Settings
 from processors import DocumentProcessor, TextChunker, QAGenerator, DatasetProcessor
 from utils import DataExporter, setup_colored_logging, EmbeddingGenerator
 import logging
+from tqdm import tqdm
 
 
 def main():
@@ -329,6 +332,14 @@ Examples:
         help="OpenAI API base URL (optional, for Azure/OpenAI-compatible endpoints)"
     )
     
+    # Concurrent processing options
+    parser.add_argument(
+        "--concurrent-requests",
+        type=int,
+        default=1,
+        help="Number of concurrent requests to process (default: 1)"
+    )
+    
     return parser
 
 
@@ -391,7 +402,8 @@ def process_file(file_path: str, settings: Settings, args: argparse.Namespace):
         offload_model=offload_model,
         llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
         openai_api_key=args.openai_api_key,
-        openai_api_base=args.openai_api_base
+        openai_api_base=args.openai_api_base,
+        concurrent_requests=args.concurrent_requests
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
@@ -499,7 +511,8 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
         offload_model=offload_model,
         llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
         openai_api_key=args.openai_api_key,
-        openai_api_base=args.openai_api_base
+        openai_api_base=args.openai_api_base,
+        concurrent_requests=args.concurrent_requests
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
@@ -536,10 +549,24 @@ def process_dataset(dataset_name: str, settings: Settings, args: argparse.Namesp
         
         # Generate QA pairs, passing real_index to the callback and to the generator
         qa_pairs = []
-        for chunk_index, (real_index, chunk) in enumerate(indexed_chunks):
-            chunk_qa_pairs = qa_generator._generate_qa_for_chunk(chunk, real_index)
-            qa_pairs.extend(chunk_qa_pairs)
-            save_incrementally(chunk, chunk_qa_pairs, chunk_index, real_index=real_index)
+        if args.concurrent_requests == 1:
+            # Sequential processing with progress bar
+            with tqdm(total=len(indexed_chunks), desc="Processing chunks", unit="chunk") as pbar:
+                for chunk_index, (real_index, chunk) in enumerate(indexed_chunks):
+                    chunk_qa_pairs = qa_generator._generate_qa_for_chunk(chunk, real_index)
+                    qa_pairs.extend(chunk_qa_pairs)
+                    save_incrementally(chunk, chunk_qa_pairs, chunk_index, real_index=real_index)
+                    pbar.update(1)
+                    pbar.set_postfix({'QA pairs': len(qa_pairs)})
+        else:
+            # Concurrent processing
+            def concurrent_save_callback(chunk, chunk_qa_pairs, real_index):
+                # For concurrent processing, real_index is passed directly
+                save_incrementally(chunk, chunk_qa_pairs, 0, real_index=real_index)
+            
+            # Pass indexed chunks directly to concurrent processing
+            qa_pairs = qa_generator._generate_qa_pairs_concurrent(indexed_chunks, concurrent_save_callback)
+            
         logger.info(f"QA generation completed. Total QA pairs: {len(qa_pairs)}")
         
         # Generate embeddings
@@ -614,7 +641,8 @@ def process_dataset_file(file_path: str, settings: Settings, args: argparse.Name
         offload_model=offload_model,
         llm_backend=args.llm_backend if args.llm_backend is not None else "transformers",
         openai_api_key=args.openai_api_key,
-        openai_api_base=args.openai_api_base
+        openai_api_base=args.openai_api_base,
+        concurrent_requests=args.concurrent_requests
     )
     embedding_generator = EmbeddingGenerator(
         model_name=embedding_model,
